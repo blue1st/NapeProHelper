@@ -374,7 +374,7 @@ pub fn read_active_pointer_dpi_official(device: &hidapi::HidDevice) -> Option<u1
 }
 
 pub fn read_layer_button_mappings(device: &hidapi::HidDevice, layer: u8) -> Option<Vec<ButtonMapping>> {
-    // 14 keycodes = 28 bytes per layer
+    // 14 keycodes = 28 bytes per layer (contiguous EEPROM storage)
     let offset_bytes = (layer as u16) * 28;
     let mut req_map = [0u8; 33];
     req_map[0] = 0x00;
@@ -429,57 +429,112 @@ pub fn read_layer_button_mappings(device: &hidapi::HidDevice, layer: u8) -> Opti
                         default_code
                     };
 
-                    // Button M1 (Left click main button) -> Wired: 11, Wireless: 4
+                    // Button M1 (Left click main button)
                     let raw_m1 = pick_valid_keycode(11, 4, 0x0001);
                     let m1_c = match raw_m1 {
-                        0x00D1 | 0x7E29 | 0x0000 => 0x0001, // Left Click / 左クリック
+                        0x00D1 | 0x522B | 0x7E29 | 0x0000 => 0x0001, // Left Click / 左クリック
                         _ => raw_m1,
                     };
                     let (act1, code1, desc1) = parse_qmk_keycode(m1_c);
                     mappings.push(ButtonMapping { button_id: 1, name: "ボタン M1".into(), action_type: act1, key_code: code1, description: desc1 });
 
-                    // Button M2 (Right click main button) -> Wired: 12, Wireless: 5
+                    // Button M2 (Right click main button)
                     let raw_m2 = pick_valid_keycode(12, 5, 0x0002);
                     let m2_c = match raw_m2 {
-                        0x00D2 | 0x7E29 | 0x0000 => 0x0002, // Right Click / 右クリック
+                        0x00D2 | 0x522A | 0x7E29 | 0x0000 => 0x0002, // Right Click / 右クリック
                         _ => raw_m2,
                     };
                     let (act2, code2, desc2) = parse_qmk_keycode(m2_c);
                     mappings.push(ButtonMapping { button_id: 2, name: "ボタン M2".into(), action_type: act2, key_code: code2, description: desc2 });
 
-                    // Button 01 (G1, bottom-left side button) -> Wired: 9, Wireless: 2
-                    let g1_c = pick_valid_keycode(9, 2, 0x00D2);
+                    // Button 01 (G1, bottom-left side button) -> Wired: 9 or 12, Wireless: 2 or 5
+                    let g1_c = if keycodes[9] != 0 && keycodes[9] != 0x7E29 && keycodes[9] != 0x00D1 && keycodes[9] != 0x00D4 {
+                        keycodes[9]
+                    } else if keycodes[12] != 0 && keycodes[12] != 0x7E29 {
+                        keycodes[12]
+                    } else if keycodes[5] != 0 && keycodes[5] != 0x7E29 {
+                        keycodes[5]
+                    } else {
+                        0x00D2 // 戻る
+                    };
                     let (act3, code3, desc3) = parse_qmk_keycode(g1_c);
                     mappings.push(ButtonMapping { button_id: 3, name: "ボタン 01 (G1)".into(), action_type: act3, key_code: code3, description: desc3 });
 
-                    // Button 02 (G2, bottom-right side button) -> Wired: 10, Wireless: 3
-                    let g2_c = pick_valid_keycode(10, 3, 0x7E2D);
+                    // Button 02 (G2, bottom-right side button) -> Wired: 10 or 9, Wireless: 3 or 2
+                    let g2_c = if keycodes[10] != 0 && keycodes[10] != 0x7E29 && keycodes[10] != 0x00D2 && keycodes[10] != 0x7E2C {
+                        keycodes[10]
+                    } else {
+                        0x7E2D // Cycle DPI
+                    };
                     let (act4, code4, desc4) = parse_qmk_keycode(g2_c);
                     mappings.push(ButtonMapping { button_id: 4, name: "ボタン 02 (G2)".into(), action_type: act4, key_code: code4, description: desc4 });
 
-                    // Button 03 (G3, top-left side button) -> Wired: 7, Wireless: 0
-                    let g3_c = pick_valid_keycode(7, 0, 0x522B);
+                    // Button 03 (G3, top-left side button) -> Wired: 7 or 13, Wireless: 0 or 6
+                    let g3_c = if keycodes[7] != 0 && keycodes[7] != 0x7E29 && keycodes[7] != 0x522A && keycodes[7] != 0x00D4 {
+                        keycodes[7]
+                    } else if keycodes[13] != 0 && keycodes[13] != 0x7E29 {
+                        keycodes[13]
+                    } else if keycodes[6] != 0 && keycodes[6] != 0x7E29 {
+                        keycodes[6]
+                    } else {
+                        0x522B
+                    };
                     let (act5, code5, desc5) = parse_qmk_keycode(g3_c);
                     mappings.push(ButtonMapping { button_id: 5, name: "ボタン 03 (G3)".into(), action_type: act5, key_code: code5, description: desc5 });
 
-                    // Button 04 (G4, top-right side button) -> Wired: 8, Wireless: 1
-                    let g4_c = pick_valid_keycode(8, 1, 0x522A);
+                    // Button 04 (G4, top-right side button) -> Wired: 8 or 7, Wireless: 1 or 0
+                    let g4_c = if keycodes[8] != 0 && keycodes[8] != 0x7E29 && keycodes[8] != 0x7E2B && keycodes[8] != 0x7E2C {
+                        keycodes[8]
+                    } else if keycodes[7] != 0 && keycodes[7] != 0x7E29 {
+                        keycodes[7]
+                    } else if keycodes[0] != 0 && keycodes[0] != 0x7E29 {
+                        keycodes[0]
+                    } else {
+                        0x522A
+                    };
                     let (act6, code6, desc6) = parse_qmk_keycode(g4_c);
                     mappings.push(ButtonMapping { button_id: 6, name: "ボタン 04 (G4)".into(), action_type: act6, key_code: code6, description: desc6 });
 
-                    // Scroll Ring Top Slot (id 7) -> Default Scroll Down
-                    let raw_ring_top = pick_valid_keycode(13, 6, 0x0C4F);
-                    let ring_top_c = match raw_ring_top {
-                        0x522B | 0x7E29 | 0x0000 => 0x0C4F, // Scroll Down / 下スクロール
-                        _ => raw_ring_top,
+                    // Scroll Ring Top (id 7) & Bottom (id 8) Slots
+                    let raw_ring_top = if keycodes[8] == 0x7E2B || keycodes[8] == 0x7E2C {
+                        keycodes[8]
+                    } else if keycodes[1] == 0x7E2B || keycodes[1] == 0x7E2C {
+                        keycodes[1]
+                    } else if keycodes[13] == 0x522B {
+                        0x522B
+                    } else if keycodes[13] != 0 && keycodes[13] != 0x7E29 {
+                        keycodes[13]
+                    } else {
+                        0x7E2B // Default Volume Up
                     };
-                    let (act7, code7, desc7) = parse_qmk_keycode(ring_top_c);
-                    mappings.push(ButtonMapping { button_id: 7, name: "スクロールリング (下スクロール)".into(), action_type: act7, key_code: code7, description: desc7 });
 
-                    // Scroll Ring Bottom Slot (id 8) -> Default Scroll Up
-                    let ring_dn_c = 0x0C50; // Scroll Up / 上にスクロール
-                    let (act8, code8, desc8) = parse_qmk_keycode(ring_dn_c);
-                    mappings.push(ButtonMapping { button_id: 8, name: "スクロールリング (上にスクロール)".into(), action_type: act8, key_code: code8, description: desc8 });
+                    let raw_ring_bottom = if keycodes[10] == 0x7E2C || keycodes[10] == 0x7E2B {
+                        keycodes[10]
+                    } else if keycodes[3] == 0x7E2C || keycodes[3] == 0x7E2B {
+                        keycodes[3]
+                    } else if keycodes[10] != 0 && keycodes[10] != 0x7E29 {
+                        keycodes[10]
+                    } else {
+                        0x7E2C // Default Volume Down
+                    };
+
+                    let (act7, code7, desc7, act8, code8, desc8) = match (raw_ring_top, raw_ring_bottom) {
+                        (0x7E2B, 0x7E2C) | (0x7E2B, _) | (_, 0x7E2C) => (
+                            "media".into(), "Vol_Up".into(), "Volume Up".into(),
+                            "media".into(), "Vol_Down".into(), "Volume Down".into(),
+                        ),
+                        (0x522B, _) => (
+                            "key".into(), "Scroll_Down".into(), "下スクロール".into(),
+                            "key".into(), "Scroll_Up".into(), "上にスクロール".into(),
+                        ),
+                        _ => {
+                            let (a7, c7, d7) = parse_qmk_keycode(raw_ring_top);
+                            let (a8, c8, d8) = parse_qmk_keycode(raw_ring_bottom);
+                            (a7, c7, d7, a8, c8, d8)
+                        }
+                    };
+                    mappings.push(ButtonMapping { button_id: 7, name: "スクロールリング (時計回り ↻)".into(), action_type: act7, key_code: code7, description: desc7 });
+                    mappings.push(ButtonMapping { button_id: 8, name: "スクロールリング (反時計回り ↺)".into(), action_type: act8, key_code: code8, description: desc8 });
 
                     return Some(mappings);
                 }
@@ -574,18 +629,6 @@ pub fn parse_qmk_keycode(code: u16) -> (String, String, String) {
         0x008B => return ("key".into(), "KC_MHEN".into(), "無変換".into()),
         0x008C => return ("key".into(), "KC_KATA".into(), "カタカナ".into()),
         0x008D => return ("key".into(), "KC_HIRG".into(), "ひらがな".into()),
-        0x0C50 => return ("key".into(), "Scroll_Up".into(), "上スクロール".into()),
-        0x0C4F => return ("key".into(), "Scroll_Down".into(), "下スクロール".into()),
-        0x0A50 => {
-            let gui_str = if cfg!(target_os = "macos") { "Cmd" } else { "Win" };
-            let alt_str = if cfg!(target_os = "macos") { "Option" } else { "Alt" };
-            return ("key".into(), "LAG(KC_LEFT)".into(), format!("{} + {} + ←", gui_str, alt_str));
-        }
-        0x0A4F => {
-            let gui_str = if cfg!(target_os = "macos") { "Cmd" } else { "Win" };
-            let alt_str = if cfg!(target_os = "macos") { "Option" } else { "Alt" };
-            return ("key".into(), "LAG(KC_RGHT)".into(), format!("{} + {} + →", gui_str, alt_str));
-        }
         0x0C52 => return ("key".into(), "Scroll_Left".into(), "左スクロール".into()),
         0x0C51 => return ("key".into(), "Scroll_Right".into(), "右スクロール".into()),
         0x522A => return ("octashift".into(), "Switch_8Dir".into(), "8方向を切り替え".into()),
@@ -929,34 +972,32 @@ mod tests {
                 if (vid == 0x3434 && pid == 0x0440) || dev_info.product_string().unwrap_or("").to_lowercase().contains("nape") {
                     if dev_info.usage_page() == 0xff60 && dev_info.usage() == 0x0061 {
                         if let Ok(device) = dev_info.open_device(&api) {
-                            println!("\n=== DUMPING EEPROM WITH STRIDE 32 ===");
-                            for layer in 0..8u8 {
-                                let offset = (layer as u16) * 32;
+                            println!("\n=== CONTINUOUS EEPROM DUMP (OFFSETS 0..280, 28 BYTES PER CHUNK) ===");
+                            for idx in 0..10 {
+                                let offset = (idx as u16) * 28;
                                 let mut req = [0u8; 33];
                                 req[0] = 0x00;
                                 req[1] = 0x12;
                                 req[2] = ((offset >> 8) & 0xFF) as u8;
                                 req[3] = (offset & 0xFF) as u8;
-                                req[4] = 32;
+                                req[4] = 28;
 
                                 if device.write(&req).is_ok() {
-                                    let mut buf = [0u8; 32];
+                                    let mut buf = [0u8; 64];
                                     if let Ok(n) = device.read_timeout(&mut buf, 200) {
-                                        let si = if n >= 4 && buf[0] == 0x12 { 0 } else if n >= 5 && buf[1] == 0x12 { 1 } else { 999 };
-                                        if si != 999 {
-                                            let di = si + 4;
-                                            let raw_hex: String = buf[di..n].iter().map(|b| format!("{:02X} ", b)).collect();
-                                            println!("Layer {} (offset={:3}): {}", layer, offset, raw_hex.trim());
-                                            let mut codes = Vec::new();
-                                            for i in (di..n.min(di + 32)).step_by(2) {
-                                                if i + 1 < n {
-                                                    codes.push(format!("0x{:04X}", u16::from_be_bytes([buf[i], buf[i + 1]])));
-                                                }
+                                        let data_idx = if n > 32 { 5 } else { 4 };
+                                        let slice = &buf[data_idx..n.min(data_idx + 28)];
+                                        let mut kcs = Vec::new();
+                                        for i in (0..slice.len()).step_by(2) {
+                                            if i + 1 < slice.len() {
+                                                let c = u16::from_be_bytes([slice[i], slice[i + 1]]);
+                                                kcs.push(format!("0x{:04X}", c));
                                             }
-                                            println!("  Keycodes: {:?}", codes);
                                         }
+                                        println!("Chunk {:2} (offset={:3}): {:?}", idx, offset, kcs);
                                     }
                                 }
+                                std::thread::sleep(std::time::Duration::from_millis(10));
                             }
                         }
                     }

@@ -398,30 +398,34 @@ export const NapeVisualizer: React.FC<NapeVisualizerProps> = ({
                       <div className={`bg-slate-900/95 border rounded-xl p-2 text-xs shadow-xl flex flex-col gap-1 min-w-[140px] whitespace-nowrap transition-all ${
                         isSelected ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-slate-900' : 'border-slate-700/80 hover:border-slate-600'
                       }`}>
-                        <button
-                          onClick={() => {
-                            setSelectedButtonId(8);
-                            handleSimulateClick(8);
-                          }}
-                          className={`flex items-center gap-2 text-[11px] text-left transition-all ${
-                            selectedButtonId === 8 ? 'text-cyan-300 font-bold' : 'text-slate-200 hover:text-white'
-                          }`}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
-                          <span className="font-semibold">{getButtonMapping(8).description || '下スクロール'}</span>
-                        </button>
-                        <div className="w-full h-[1px] bg-slate-800"></div>
+                        {/* Upper Slot: Button ID 7 (Cyan dot / Clockwise ↻) */}
                         <button
                           onClick={() => {
                             setSelectedButtonId(7);
                             handleSimulateClick(7);
                           }}
-                          className={`flex items-center gap-2 text-[11px] text-left transition-all ${
-                            selectedButtonId === 7 ? 'text-indigo-300 font-bold' : 'text-slate-200 hover:text-white'
+                          className={`flex items-center gap-1.5 text-[11px] text-left transition-all ${
+                            selectedButtonId === 7 ? 'text-cyan-300 font-bold' : 'text-slate-200 hover:text-white'
                           }`}
                         >
-                          <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
-                          <span className="font-semibold">{getButtonMapping(7).description || '上にスクロール'}</span>
+                          <span className="w-2 h-2 rounded-full bg-cyan-400 shrink-0"></span>
+                          <span className="font-mono text-cyan-400 font-bold text-xs shrink-0" title="時計回り (CW)">↻</span>
+                          <span className="font-semibold">{getButtonMapping(7).description || 'Volume Up'}</span>
+                        </button>
+                        <div className="w-full h-[1px] bg-slate-800"></div>
+                        {/* Lower Slot: Button ID 8 (Indigo dot / Counter-Clockwise ↺) */}
+                        <button
+                          onClick={() => {
+                            setSelectedButtonId(8);
+                            handleSimulateClick(8);
+                          }}
+                          className={`flex items-center gap-1.5 text-[11px] text-left transition-all ${
+                            selectedButtonId === 8 ? 'text-indigo-300 font-bold' : 'text-slate-200 hover:text-white'
+                          }`}
+                        >
+                          <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0"></span>
+                          <span className="font-mono text-indigo-400 font-bold text-xs shrink-0" title="反時計回り (CCW)">↺</span>
+                          <span className="font-semibold">{getButtonMapping(8).description || 'Volume Down'}</span>
                         </button>
                       </div>
                     </div>
