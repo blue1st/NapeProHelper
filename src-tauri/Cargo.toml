@@ -1,7 +1,7 @@
 [package]
 name = "napepro-helper"
 version = "1.0.1"
-description = "System tray companion helper application for Keychron Nape Pro trackball"
+description = "System tray companion helper application for Keychron Nape Pro trackball device"
 authors = ["Antigravity Developer"]
 edition = "2021"
 default-run = "napepro-helper"
