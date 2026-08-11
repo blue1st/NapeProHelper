@@ -489,6 +489,15 @@ pub fn run() {
             sync_tray_menu(app.handle(), &initial_config);
             app.manage(tray_state);
 
+            let is_autostart = std::env::args().any(|arg| arg == "--autostart");
+            if is_autostart {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                    #[cfg(target_os = "macos")]
+                    let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                }
+            }
+
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
@@ -503,7 +512,11 @@ pub fn run() {
                             let is_visible = window.is_visible().unwrap_or(false);
                             if is_visible {
                                 let _ = window.hide();
+                                #[cfg(target_os = "macos")]
+                                let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
                             } else {
+                                #[cfg(target_os = "macos")]
+                                let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }
@@ -676,6 +689,8 @@ pub fn run() {
             WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let _ = window.hide();
+                #[cfg(target_os = "macos")]
+                let _ = window.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
             }
             _ => {}
         })

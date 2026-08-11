@@ -1882,7 +1882,7 @@ dependencies = [
 
 [[package]]
 name = "napepro-helper"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "hidapi",
  "serde",
