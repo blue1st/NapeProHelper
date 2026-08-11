@@ -15,7 +15,7 @@ const defaultDevice: DeviceProfile = {
   is_connected: false,
   active_layer: 0,
   octashift_angle: 0,
-  layer_octashift_angles: { 0: 0, 1: 45, 2: 90, 3: 135, 4: 180, 5: 225, 6: 270, 7: 315 },
+  layer_octashift_angles: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 },
   pointer_dpi: 1600,
   trackball_scroll_mode: false,
   trackball_gesture_mode: false,
@@ -96,10 +96,17 @@ export function App() {
 
   // Handlers invoking Rust commands or updating local config
   const handleSelectLayer = async (layerId: number) => {
-    setConfig((prev) => ({
-      ...prev,
-      device: { ...prev.device, active_layer: layerId },
-    }));
+    setConfig((prev) => {
+      const targetAngle = prev.device.layer_octashift_angles?.[layerId] ?? 0;
+      return {
+        ...prev,
+        device: {
+          ...prev.device,
+          active_layer: layerId,
+          octashift_angle: targetAngle,
+        },
+      };
+    });
     try {
       const res = await invoke<AppConfig>('set_active_layer', { layerId });
       if (res) setConfig(res);

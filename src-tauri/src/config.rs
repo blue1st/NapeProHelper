@@ -121,10 +121,14 @@ pub fn read_octashift_angle_official(device: &hidapi::HidDevice, layer: u8) -> O
             };
 
             if start_idx != 999 {
-                // Response format: [0xA7, 56, layer_id, angle_div_45, ...]
-                // buf[start_idx + 2] is layer_id
-                // buf[start_idx + 3] is angle_div_45 (0..7)
-                let raw_val = buf[start_idx + 3];
+                // Response format: [0xA7, 56, angle_div_45, ...] or [0xA7, 56, layer_id, angle_div_45]
+                let raw_val = if buf[start_idx + 2] < 8 {
+                    buf[start_idx + 2]
+                } else if buf[start_idx + 3] < 8 {
+                    buf[start_idx + 3]
+                } else {
+                    0
+                };
                 let angle = (raw_val as u16) * 45;
                 if angle < 360 {
                     return Some(angle);
@@ -447,21 +451,23 @@ pub fn read_layer_button_mappings(device: &hidapi::HidDevice, layer: u8) -> Opti
                     let (act2, code2, desc2) = parse_qmk_keycode(m2_c);
                     mappings.push(ButtonMapping { button_id: 2, name: "ボタン M2".into(), action_type: act2, key_code: code2, description: desc2 });
 
-                    // Button 01 (G1, bottom-left side button) -> Wired: 9 or 12, Wireless: 2 or 5
-                    let g1_c = if keycodes[9] != 0 && keycodes[9] != 0x7E29 && keycodes[9] != 0x00D1 && keycodes[9] != 0x00D4 {
+                    // Button 01 (G1, bottom-left side button)
+                    let g1_c = if keycodes[8] == 0x00D5 || keycodes[8] == 0x00D4 {
+                        keycodes[8] // 90° mode: 英数
+                    } else if keycodes[9] != 0 && keycodes[9] != 0x7E29 && keycodes[9] != 0x00D1 && keycodes[9] != 0x00D4 {
                         keycodes[9]
-                    } else if keycodes[12] != 0 && keycodes[12] != 0x7E29 {
+                    } else if keycodes[12] != 0 && keycodes[12] != 0x7E29 && keycodes[12] != 0x00D2 {
                         keycodes[12]
-                    } else if keycodes[5] != 0 && keycodes[5] != 0x7E29 {
-                        keycodes[5]
                     } else {
                         0x00D2 // 戻る
                     };
                     let (act3, code3, desc3) = parse_qmk_keycode(g1_c);
                     mappings.push(ButtonMapping { button_id: 3, name: "ボタン 01 (G1)".into(), action_type: act3, key_code: code3, description: desc3 });
 
-                    // Button 02 (G2, bottom-right side button) -> Wired: 10 or 9, Wireless: 3 or 2
-                    let g2_c = if keycodes[10] != 0 && keycodes[10] != 0x7E29 && keycodes[10] != 0x00D2 && keycodes[10] != 0x7E2C {
+                    // Button 02 (G2, bottom-right side button)
+                    let g2_c = if keycodes[12] == 0x00D2 || keycodes[12] == 0x00D1 {
+                        keycodes[12] // 90° mode: 戻る
+                    } else if keycodes[10] != 0 && keycodes[10] != 0x7E29 && keycodes[10] != 0x00D2 && keycodes[10] != 0x7E2C && keycodes[10] != 0x00D4 {
                         keycodes[10]
                     } else {
                         0x7E2D // Cycle DPI
@@ -469,28 +475,28 @@ pub fn read_layer_button_mappings(device: &hidapi::HidDevice, layer: u8) -> Opti
                     let (act4, code4, desc4) = parse_qmk_keycode(g2_c);
                     mappings.push(ButtonMapping { button_id: 4, name: "ボタン 02 (G2)".into(), action_type: act4, key_code: code4, description: desc4 });
 
-                    // Button 03 (G3, top-left side button) -> Wired: 7 or 13, Wireless: 0 or 6
-                    let g3_c = if keycodes[7] != 0 && keycodes[7] != 0x7E29 && keycodes[7] != 0x522A && keycodes[7] != 0x00D4 {
+                    // Button 03 (G3, top-left side button)
+                    let g3_c = if keycodes[10] == 0x00D4 || keycodes[10] == 0x00D5 {
+                        keycodes[10] // 90° mode: かな
+                    } else if keycodes[7] != 0 && keycodes[7] != 0x7E29 && keycodes[7] != 0x522A && keycodes[7] != 0x00D4 {
                         keycodes[7]
                     } else if keycodes[13] != 0 && keycodes[13] != 0x7E29 {
                         keycodes[13]
-                    } else if keycodes[6] != 0 && keycodes[6] != 0x7E29 {
-                        keycodes[6]
                     } else {
-                        0x522B
+                        0x522B // ボールスクロール
                     };
                     let (act5, code5, desc5) = parse_qmk_keycode(g3_c);
                     mappings.push(ButtonMapping { button_id: 5, name: "ボタン 03 (G3)".into(), action_type: act5, key_code: code5, description: desc5 });
 
-                    // Button 04 (G4, top-right side button) -> Wired: 8 or 7, Wireless: 1 or 0
-                    let g4_c = if keycodes[8] != 0 && keycodes[8] != 0x7E29 && keycodes[8] != 0x7E2B && keycodes[8] != 0x7E2C {
+                    // Button 04 (G4, top-right side button)
+                    let g4_c = if keycodes[11] == 0x00D1 || keycodes[11] == 0x00D2 {
+                        keycodes[11] // 90° mode: 進む
+                    } else if keycodes[8] != 0 && keycodes[8] != 0x7E29 && keycodes[8] != 0x7E2B && keycodes[8] != 0x7E2C && keycodes[8] != 0x00D5 {
                         keycodes[8]
                     } else if keycodes[7] != 0 && keycodes[7] != 0x7E29 {
                         keycodes[7]
-                    } else if keycodes[0] != 0 && keycodes[0] != 0x7E29 {
-                        keycodes[0]
                     } else {
-                        0x522A
+                        0x522A // 8方向を切り替え
                     };
                     let (act6, code6, desc6) = parse_qmk_keycode(g4_c);
                     mappings.push(ButtonMapping { button_id: 6, name: "ボタン 04 (G4)".into(), action_type: act6, key_code: code6, description: desc6 });
@@ -557,7 +563,7 @@ pub fn create_default_device(
 
     for i in 0..8u8 {
         layer_names.insert(i, format!("Layer {}", i));
-        layer_octashift_angles.insert(i, (i as u16) * 45);
+        layer_octashift_angles.insert(i, 0);
 
         let mappings = vec![
             ButtonMapping { button_id: 1, name: "ボタン M1".to_string(), action_type: "key".to_string(), key_code: "Click_Left".to_string(), description: "左クリック".to_string() },
@@ -834,8 +840,14 @@ pub fn scan_hid_devices(config: &mut AppConfig) -> bool {
                     std::thread::sleep(std::time::Duration::from_millis(5));
 
                     if let Some(ang) = read_octashift_angle_official(&device, config.device.active_layer) {
-                        config.device.octashift_angle = ang;
-                        config.device.layer_octashift_angles.insert(config.device.active_layer, ang);
+                        let active_l = config.device.active_layer;
+                        let saved_angle = config.device.layer_octashift_angles.get(&active_l).copied();
+                        if let Some(s_ang) = saved_angle {
+                            config.device.octashift_angle = s_ang;
+                        } else {
+                            config.device.octashift_angle = ang;
+                            config.device.layer_octashift_angles.insert(active_l, ang);
+                        }
                     }
 
                     if let Some(dpi) = read_active_pointer_dpi_official(&device) {
