@@ -1,0 +1,34 @@
+[package]
+name = "napepro-helper"
+version = "1.0.0"
+description = "System tray companion helper application for Keychron Nape Pro trackball"
+authors = ["Antigravity Developer"]
+edition = "2021"
+default-run = "napepro-helper"
+
+[lib]
+name = "napepro_helper_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.5", features = [] }
+
+[dependencies]
+tauri = { version = "2.1.1", features = ["tray-icon"] }
+tauri-plugin-autostart = "2.0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+hidapi = "2.6.3"
+
+[[bin]]
+name = "napepro-helper"
+path = "src/main.rs"
+
+[[bin]]
+name = "inspect"
+path = "src/bin/inspect.rs"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
