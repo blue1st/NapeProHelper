@@ -3,7 +3,7 @@ pub mod config;
 use config::{AppConfig, ConfigState};
 use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager, State, WindowEvent};
 
 pub struct TrayMenuState {
@@ -665,20 +665,6 @@ pub fn run() {
                                     let _ = app_handle.emit("config-updated", &cfg);
                                 }
                             });
-                        }
-                    }
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { .. } = event {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let is_visible = window.is_visible().unwrap_or(false);
-                            if is_visible {
-                                let _ = window.hide();
-                            } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
                         }
                     }
                 })
