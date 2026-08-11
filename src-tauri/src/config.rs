@@ -65,7 +65,7 @@ pub fn read_active_layer_official(device: &hidapi::HidDevice) -> Option<u8> {
     req[3] = 0xFF; // 255
 
     if device.write(&req).is_ok() {
-        let mut buf = [0u8; 32];
+        let mut buf = [0u8; 64];
         if let Ok(n) = device.read_timeout(&mut buf, 200) {
             let start_idx = if n >= 3 && buf[0] == 0xA3 {
                 0
@@ -87,6 +87,8 @@ pub fn read_active_layer_official(device: &hidapi::HidDevice) -> Option<u8> {
                 // Convert 1-based hardware layer index (1..8) to 0-based internal layer index (0..7)
                 let active = if raw_active >= 1 && raw_active <= 8 {
                     raw_active - 1
+                } else if raw_active < 8 {
+                    raw_active
                 } else {
                     0
                 };
@@ -105,21 +107,24 @@ pub fn read_octashift_angle_official(device: &hidapi::HidDevice, layer: u8) -> O
     req[0] = 0x00;
     req[1] = 0xA7; // KC_MISC_CMD_GROUP
     req[2] = 56;   // KC_USER_CMD_NAPE_GET_LAYER_ORI (56 / 0x38)
-    req[3] = layer + 1; // Keychron 0xA7 group uses 1-based layer index
+    req[3] = layer; // 0-based layer index (0..7)
 
     if device.write(&req).is_ok() {
-        let mut buf = [0u8; 32];
+        let mut buf = [0u8; 64];
         if let Ok(n) = device.read_timeout(&mut buf, 200) {
-            let start_idx = if n >= 3 && buf[0] == 0xA7 {
+            let start_idx = if n >= 4 && buf[0] == 0xA7 && buf[1] == 56 {
                 0
-            } else if n >= 4 && buf[1] == 0xA7 {
+            } else if n >= 5 && buf[1] == 0xA7 && buf[2] == 56 {
                 1
             } else {
                 999
             };
 
             if start_idx != 999 {
-                let raw_val = buf[start_idx + 2];
+                // Response format: [0xA7, 56, layer_id, angle_div_45, ...]
+                // buf[start_idx + 2] is layer_id
+                // buf[start_idx + 3] is angle_div_45 (0..7)
+                let raw_val = buf[start_idx + 3];
                 let angle = (raw_val as u16) * 45;
                 if angle < 360 {
                     return Some(angle);
@@ -134,12 +139,12 @@ pub fn read_octashift_angle_official(device: &hidapi::HidDevice, layer: u8) -> O
 pub fn set_octashift_angle_official(device: &hidapi::HidDevice, layer: u8, angle: u16) -> bool {
     let angle_val = ((angle % 360) / 45) as u8;
 
-    // 1. KC_USER_CMD_NAPE_SET_LAYER_ORI (57 / 0x39) - 1-based layer index
+    // 1. KC_USER_CMD_NAPE_SET_LAYER_ORI (57 / 0x39) - 0-based layer index
     let mut req1 = [0u8; 33];
     req1[0] = 0x00;
     req1[1] = 0xA7; // KC_MISC_CMD_GROUP
     req1[2] = 57;   // KC_USER_CMD_NAPE_SET_LAYER_ORI
-    req1[3] = layer + 1;
+    req1[3] = layer; // 0-based layer index (0..7)
     req1[4] = angle_val;
     let res1 = device.write(&req1).is_ok();
 
@@ -229,7 +234,7 @@ pub fn read_trackball_force_gesture_scroll_official(device: &hidapi::HidDevice) 
     req[2] = 51;   // Get_Force_Gesture_Scroll (0x33)
 
     if device.write(&req).is_ok() {
-        let mut buf = [0u8; 32];
+        let mut buf = [0u8; 64];
         if let Ok(n) = device.read_timeout(&mut buf, 200) {
             let start_idx = if n >= 4 && buf[0] == 0xA7 && buf[1] == 51 {
                 0
@@ -257,7 +262,7 @@ pub fn read_custom_dpi_official(device: &hidapi::HidDevice) -> Option<u16> {
     req[2] = 54;   // Get_Custom_Dpi_Value (0x36)
 
     if device.write(&req).is_ok() {
-        let mut buf = [0u8; 32];
+        let mut buf = [0u8; 64];
         if let Ok(n) = device.read_timeout(&mut buf, 200) {
             let start_idx = if n >= 4 && buf[0] == 0xA7 && buf[1] == 54 {
                 0
@@ -290,7 +295,7 @@ pub fn read_active_pointer_dpi_official(device: &hidapi::HidDevice) -> Option<u1
 
     let mut active_index: Option<u8> = None;
     if device.write(&req33).is_ok() {
-        let mut buf = [0u8; 32];
+        let mut buf = [0u8; 64];
         if let Ok(n) = device.read_timeout(&mut buf, 200) {
             let si = if n >= 3 && buf[0] == 0xA7 && buf[1] == 33 {
                 0
@@ -314,7 +319,7 @@ pub fn read_active_pointer_dpi_official(device: &hidapi::HidDevice) -> Option<u1
         req36[3] = idx;
 
         if device.write(&req36).is_ok() {
-            let mut buf = [0u8; 32];
+            let mut buf = [0u8; 64];
             if let Ok(n) = device.read_timeout(&mut buf, 200) {
                 let si = if n >= 4 && buf[0] == 0xA7 && buf[1] == 36 {
                     0
@@ -345,7 +350,7 @@ pub fn read_active_pointer_dpi_official(device: &hidapi::HidDevice) -> Option<u1
     req_via[0] = 0x00;
     req_via[1] = 0x0C;
     if device.write(&req_via).is_ok() {
-        let mut buf = [0u8; 32];
+        let mut buf = [0u8; 64];
         if let Ok(n) = device.read_timeout(&mut buf, 200) {
             let si = if n >= 2 && buf[0] == 0x0C { 0 } else if n >= 3 && buf[1] == 0x0C { 1 } else { 999 };
             if si != 999 {
@@ -368,8 +373,6 @@ pub fn read_active_pointer_dpi_official(device: &hidapi::HidDevice) -> Option<u1
     None
 }
 
-
-
 pub fn read_layer_button_mappings(device: &hidapi::HidDevice, layer: u8) -> Option<Vec<ButtonMapping>> {
     // 14 keycodes = 28 bytes per layer
     let offset_bytes = (layer as u16) * 28;
@@ -381,7 +384,7 @@ pub fn read_layer_button_mappings(device: &hidapi::HidDevice, layer: u8) -> Opti
     req_map[4] = 28; // Read 28 bytes (14 keycodes)
 
     if device.write(&req_map).is_ok() {
-        let mut buf = [0u8; 32];
+        let mut buf = [0u8; 64];
         if let Ok(n) = device.read_timeout(&mut buf, 200) {
             let start_idx = if n >= 4 && buf[0] == 0x12 {
                 0
@@ -404,55 +407,65 @@ pub fn read_layer_button_mappings(device: &hidapi::HidDevice, layer: u8) -> Opti
                 if keycodes.len() >= 14 {
                     let mut mappings = Vec::new();
 
-                    let pick_valid_keycode = |indices: &[usize], default_code: u16| -> u16 {
-                        for &idx in indices {
-                            if idx < keycodes.len() {
-                                let c = keycodes[idx];
-                                if c != 0 && c != 0x7E29 {
-                                    return c;
-                                }
+                    let pick_valid_keycode = |wired_idx: usize, wireless_idx: usize, default_code: u16| -> u16 {
+                        if wired_idx < keycodes.len() {
+                            let c = keycodes[wired_idx];
+                            if c != 0 && c != 0x7E29 {
+                                return c;
                             }
+                        }
+                        if wireless_idx < keycodes.len() {
+                            let c = keycodes[wireless_idx];
+                            if c != 0 && c != 0x7E29 {
+                                return c;
+                            }
+                        }
+                        if wired_idx < keycodes.len() && keycodes[wired_idx] != 0 {
+                            return keycodes[wired_idx];
+                        }
+                        if wireless_idx < keycodes.len() && keycodes[wireless_idx] != 0 {
+                            return keycodes[wireless_idx];
                         }
                         default_code
                     };
 
-                    // Button M1 (Left click main button)
-                    let m1_c = pick_valid_keycode(&[7, 0], 0x0001);
+                    // Button M1 (Left click main button) -> Wired: 11, Wireless: 4
+                    let m1_c = pick_valid_keycode(11, 4, 0x0001);
                     let (act1, code1, desc1) = parse_qmk_keycode(m1_c);
                     mappings.push(ButtonMapping { button_id: 1, name: "ボタン M1".into(), action_type: act1, key_code: code1, description: desc1 });
 
-                    // Button M2 (Right click main button)
-                    let m2_c = pick_valid_keycode(&[9, 1], 0x0002);
+                    // Button M2 (Right click main button) -> Wired: 12, Wireless: 5
+                    let m2_c = pick_valid_keycode(12, 5, 0x0002);
                     let (act2, code2, desc2) = parse_qmk_keycode(m2_c);
                     mappings.push(ButtonMapping { button_id: 2, name: "ボタン M2".into(), action_type: act2, key_code: code2, description: desc2 });
 
-                    // Button 01 (G1, bottom-left side button)
-                    let g1_c = pick_valid_keycode(&[12, 5, 8, 9], 0x00D2);
+                    // Button 01 (G1, bottom-left side button) -> Wired: 9, Wireless: 2
+                    let g1_c = pick_valid_keycode(9, 2, 0x00D2);
                     let (act3, code3, desc3) = parse_qmk_keycode(g1_c);
                     mappings.push(ButtonMapping { button_id: 3, name: "ボタン 01 (G1)".into(), action_type: act3, key_code: code3, description: desc3 });
 
-                    // Button 02 (G2, bottom-right side button)
-                    let g2_c = pick_valid_keycode(&[10, 12, 4], 0x7E2D);
+                    // Button 02 (G2, bottom-right side button) -> Wired: 10, Wireless: 3
+                    let g2_c = pick_valid_keycode(10, 3, 0x7E2D);
                     let (act4, code4, desc4) = parse_qmk_keycode(g2_c);
                     mappings.push(ButtonMapping { button_id: 4, name: "ボタン 02 (G2)".into(), action_type: act4, key_code: code4, description: desc4 });
 
-                    // Button 03 (G3, top-left side button)
-                    let g3_c = pick_valid_keycode(&[13, 6, 10, 11], 0x522B);
+                    // Button 03 (G3, top-left side button) -> Wired: 7, Wireless: 0
+                    let g3_c = pick_valid_keycode(7, 0, 0x522B);
                     let (act5, code5, desc5) = parse_qmk_keycode(g3_c);
                     mappings.push(ButtonMapping { button_id: 5, name: "ボタン 03 (G3)".into(), action_type: act5, key_code: code5, description: desc5 });
 
-                    // Button 04 (G4, top-right side button)
-                    let g4_c = pick_valid_keycode(&[7, 0, 11, 12], 0x522A);
+                    // Button 04 (G4, top-right side button) -> Wired: 8, Wireless: 1
+                    let g4_c = pick_valid_keycode(8, 1, 0x522A);
                     let (act6, code6, desc6) = parse_qmk_keycode(g4_c);
                     mappings.push(ButtonMapping { button_id: 6, name: "ボタン 04 (G4)".into(), action_type: act6, key_code: code6, description: desc6 });
 
-                    // Scroll Ring Top Slot (id 7) -> Default Volume Up
-                    let ring_up_c = pick_valid_keycode(&[7, 1], 0x7E2B);
+                    // Scroll Ring Top Slot (id 7) -> Wired: 13, Wireless: 6
+                    let ring_up_c = pick_valid_keycode(13, 6, 0x7E2B);
                     let (act7, code7, desc7) = parse_qmk_keycode(ring_up_c);
                     mappings.push(ButtonMapping { button_id: 7, name: "スクロールリング (上 / Vol Up)".into(), action_type: act7, key_code: code7, description: desc7 });
 
                     // Scroll Ring Bottom Slot (id 8) -> Default Volume Down
-                    let ring_dn_c = pick_valid_keycode(&[8, 3], 0x7E2C);
+                    let ring_dn_c = 0x7E2C;
                     let (act8, code8, desc8) = parse_qmk_keycode(ring_dn_c);
                     mappings.push(ButtonMapping { button_id: 8, name: "スクロールリング (下 / Vol Down)".into(), action_type: act8, key_code: code8, description: desc8 });
 
@@ -762,10 +775,22 @@ pub fn scan_hid_devices(config: &mut AppConfig) -> bool {
                     }
                     std::thread::sleep(std::time::Duration::from_millis(10));
 
-                    if let Some(ang) = read_octashift_angle_official(&device, 0) {
-                        config.device.octashift_angle = ang;
+                    let mut hw_layer_angles = HashMap::new();
+                    for layer in 0..8u8 {
+                        if let Some(ang) = read_octashift_angle_official(&device, layer) {
+                            hw_layer_angles.insert(layer, ang);
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(5));
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(10));
+
+                    if !hw_layer_angles.is_empty() {
+                        if let Some(&ang) = hw_layer_angles.get(&config.device.active_layer) {
+                            config.device.octashift_angle = ang;
+                        } else if let Some(&ang) = hw_layer_angles.get(&0) {
+                            config.device.octashift_angle = ang;
+                        }
+                        config.device.layer_octashift_angles = hw_layer_angles;
+                    }
 
                     if let Some(dpi) = read_active_pointer_dpi_official(&device) {
                         config.device.pointer_dpi = dpi;

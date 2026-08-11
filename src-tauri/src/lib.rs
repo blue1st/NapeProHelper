@@ -119,7 +119,7 @@ async fn set_active_layer(app: tauri::AppHandle, _device_id: Option<String>, lay
                             req[0] = 0x00;
                             req[1] = 0xA7; // KC_MISC_CMD_GROUP
                             req[2] = 45;   // KC_USER_CMD_NAPE_SET_LAYER (45 / 0x2D)
-                            req[3] = layer_id + 1; // 1-based layer index
+                            req[3] = layer_id; // 0-based layer index (0..7)
                             let _ = hid_dev.write(&req);
                             break;
                         }
@@ -552,7 +552,7 @@ pub fn run() {
                                                         req[0] = 0x00;
                                                         req[1] = 0xA7;
                                                         req[2] = 45;
-                                                        req[3] = layer_idx + 1;
+                                                        req[3] = layer_idx;
                                                         let _ = hid_dev.write(&req);
                                                         break;
                                                     }
