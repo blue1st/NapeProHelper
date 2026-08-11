@@ -451,53 +451,43 @@ pub fn read_layer_button_mappings(device: &hidapi::HidDevice, layer: u8) -> Opti
                     let (act2, code2, desc2) = parse_qmk_keycode(m2_c);
                     mappings.push(ButtonMapping { button_id: 2, name: "ボタン M2".into(), action_type: act2, key_code: code2, description: desc2 });
 
-                    // Button 01 (G1, bottom-left side button)
-                    let g1_c = if keycodes[8] == 0x00D5 || keycodes[8] == 0x00D4 {
-                        keycodes[8] // 90° mode: 英数
-                    } else if keycodes[9] != 0 && keycodes[9] != 0x7E29 && keycodes[9] != 0x00D1 && keycodes[9] != 0x00D4 {
-                        keycodes[9]
-                    } else if keycodes[12] != 0 && keycodes[12] != 0x7E29 && keycodes[12] != 0x00D2 {
-                        keycodes[12]
+                    // Determine layer mode: Factory Default vs 90° Custom vs 0° Custom
+                    let is_wireless_default = (keycodes[0] == 0x522A || keycodes[0] == 0x522B) && keycodes[1] == 0x7E2B && (keycodes[2] == 0x00D4 || keycodes[2] == 0x00D2) && keycodes[3] == 0x7E2C;
+                    let is_wired_default = (keycodes[7] == 0x522A || keycodes[7] == 0x522B) && keycodes[8] == 0x7E2B && (keycodes[9] == 0x00D4 || keycodes[9] == 0x00D2) && keycodes[10] == 0x7E2C;
+                    let is_all_zeros = keycodes.iter().all(|&c| c == 0);
+                    let is_wired_zeros = keycodes[7..14].iter().all(|&c| c == 0);
+
+                    let is_factory_default = is_all_zeros || (is_wired_zeros && (is_wireless_default || keycodes[0] == 0x522A)) || is_wired_default;
+                    let is_90_degree_custom = keycodes[8] == 0x00D5 && keycodes[10] == 0x00D4;
+
+                    let (g1_c, g2_c, g3_c, g4_c) = if is_factory_default {
+                        // Factory Default Uncustomized Layer (Layer 1..7)
+                        (0x00D2, 0x7E2D, 0x522B, 0x522A)
+                    } else if is_90_degree_custom {
+                        // 90° OctaShift Custom Orientation Mode
+                        let c_01 = keycodes[8];  // 英数 (0x00D5)
+                        let c_03 = keycodes[10]; // かな (0x00D4)
+                        let c_04 = if keycodes[11] != 0 && keycodes[11] != 0x7E29 { keycodes[11] } else { 0x00D1 }; // 進む
+                        let c_02 = if keycodes[12] != 0 && keycodes[12] != 0x7E29 { keycodes[12] } else { 0x00D2 }; // 戻る
+                        (c_01, c_02, c_03, c_04)
                     } else {
-                        0x00D2 // 戻る
+                        // 0° Standard Upright Custom Orientation Mode (e.g. Layer 0)
+                        let c_01 = pick_valid_keycode(9, 2, 0x00D2);
+                        let c_02 = pick_valid_keycode(10, 3, 0x7E2D);
+                        let c_03 = pick_valid_keycode(7, 0, 0x522B);
+                        let c_04 = pick_valid_keycode(8, 1, 0x522A);
+                        (c_01, c_02, c_03, c_04)
                     };
+
                     let (act3, code3, desc3) = parse_qmk_keycode(g1_c);
                     mappings.push(ButtonMapping { button_id: 3, name: "ボタン 01 (G1)".into(), action_type: act3, key_code: code3, description: desc3 });
 
-                    // Button 02 (G2, bottom-right side button)
-                    let g2_c = if keycodes[12] == 0x00D2 || keycodes[12] == 0x00D1 {
-                        keycodes[12] // 90° mode: 戻る
-                    } else if keycodes[10] != 0 && keycodes[10] != 0x7E29 && keycodes[10] != 0x00D2 && keycodes[10] != 0x7E2C && keycodes[10] != 0x00D4 {
-                        keycodes[10]
-                    } else {
-                        0x7E2D // Cycle DPI
-                    };
                     let (act4, code4, desc4) = parse_qmk_keycode(g2_c);
                     mappings.push(ButtonMapping { button_id: 4, name: "ボタン 02 (G2)".into(), action_type: act4, key_code: code4, description: desc4 });
 
-                    // Button 03 (G3, top-left side button)
-                    let g3_c = if keycodes[10] == 0x00D4 || keycodes[10] == 0x00D5 {
-                        keycodes[10] // 90° mode: かな
-                    } else if keycodes[7] != 0 && keycodes[7] != 0x7E29 && keycodes[7] != 0x522A && keycodes[7] != 0x00D4 {
-                        keycodes[7]
-                    } else if keycodes[13] != 0 && keycodes[13] != 0x7E29 {
-                        keycodes[13]
-                    } else {
-                        0x522B // ボールスクロール
-                    };
                     let (act5, code5, desc5) = parse_qmk_keycode(g3_c);
                     mappings.push(ButtonMapping { button_id: 5, name: "ボタン 03 (G3)".into(), action_type: act5, key_code: code5, description: desc5 });
 
-                    // Button 04 (G4, top-right side button)
-                    let g4_c = if keycodes[11] == 0x00D1 || keycodes[11] == 0x00D2 {
-                        keycodes[11] // 90° mode: 進む
-                    } else if keycodes[8] != 0 && keycodes[8] != 0x7E29 && keycodes[8] != 0x7E2B && keycodes[8] != 0x7E2C && keycodes[8] != 0x00D5 {
-                        keycodes[8]
-                    } else if keycodes[7] != 0 && keycodes[7] != 0x7E29 {
-                        keycodes[7]
-                    } else {
-                        0x522A // 8方向を切り替え
-                    };
                     let (act6, code6, desc6) = parse_qmk_keycode(g4_c);
                     mappings.push(ButtonMapping { button_id: 6, name: "ボタン 04 (G4)".into(), action_type: act6, key_code: code6, description: desc6 });
 
