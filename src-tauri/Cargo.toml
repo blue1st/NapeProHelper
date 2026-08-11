@@ -25,10 +25,6 @@ hidapi = "2.6.3"
 name = "napepro-helper"
 path = "src/main.rs"
 
-[[bin]]
-name = "inspect"
-path = "src/bin/inspect.rs"
-
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

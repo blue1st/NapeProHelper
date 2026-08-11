@@ -1,6 +1,6 @@
 use hidapi::HidApi;
 
-#[path = "../config.rs"]
+#[path = "../src/config.rs"]
 mod config;
 
 fn main() {
