@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/blue1st/NapeProHelper/releases"><img src="https://img.shields.io/github/v/release/blue1st/NapeProHelper?style=flat-square&color=6366f1" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License"></a>
-  <img src="https://img.shields.io/badge/platform-macOS-lightgrey.svg?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/tauri-v2-orange.svg?style=flat-square" alt="Tauri v2">
 </p>
 
@@ -34,24 +34,32 @@
 - 🎨 **インタラクティブ・ライザー (Interactive Layer Visualizer)**  
   Keychron Nape Pro の接続状態、現在アクティブなレイヤー、キーバインディング、OctaShift 角度ガイドを直感的に視覚化。
 - 🔔 **システムトレイ常駐 & 自動起動 (System Tray & Autostart)**  
-  macOS メニューバー（システムトレイ）からすばやく設定変更が可能。ログイン時の自動起動にも対応。
+  macOS メニューバー / Windows タスクバー（システムトレイ）からすばやく設定変更が可能。ログイン時の自動起動にも対応。
 
 ---
 
 ## 🚀 インストール方法 (Installation)
 
-### 1. Homebrew Cask (推奨 / Recommended)
+### 1. macOS
+
+#### Homebrew Cask (推奨 / Recommended)
 
 ```bash
 brew tap blue1st/taps
 brew install --cask napepro-helper
 ```
 
-### 2. 直接ダウンロード (Direct DMG Download)
+#### 直接ダウンロード (Direct DMG Download)
 
 [GitHub Releases](https://github.com/blue1st/NapeProHelper/releases) から最新の macOS 用インストーラー (`.dmg`) をダウンロードし、`Applications` フォルダにドラッグ＆ドロップしてください。
 
 > 💡 **初回起動時の注意 (macOS)**: 未署名アプリケーションのメッセージが表示された場合は、副ボタン（右クリック）で「開く」を選択するか、`システム設定 > プライバシーとセキュリティ` から開くを許可してください。
+
+### 2. Windows
+
+#### 直接ダウンロード (Direct Installer Download)
+
+[GitHub Releases](https://github.com/blue1st/NapeProHelper/releases) から最新の Windows 用インストーラー (`.exe` または `.msi`) をダウンロードし、実行してインストールしてください。
 
 ---
 
@@ -79,7 +87,7 @@ npm run tauri dev
 ### アプリケーションのビルド (Build Release Bundle)
 
 ```bash
-# Webアセットのビルドおよび Tauri パッケージ作成 (.dmg / .app)
+# Webアセットのビルドおよび Tauri パッケージ作成 (macOS: .dmg / .app, Windows: .exe / .msi)
 npm run build
 npm run tauri build
 ```
