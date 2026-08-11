@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/blue1st/napepro-helper/releases"><img src="https://img.shields.io/github/v/release/blue1st/napepro-helper?style=flat-square&color=6366f1" alt="Release"></a>
+  <a href="https://github.com/blue1st/NapeProHelper/releases"><img src="https://img.shields.io/github/v/release/blue1st/NapeProHelper?style=flat-square&color=6366f1" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/platform-macOS-lightgrey.svg?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/tauri-v2-orange.svg?style=flat-square" alt="Tauri v2">
@@ -49,7 +49,7 @@ brew install --cask napepro-helper
 
 ### 2. 直接ダウンロード (Direct DMG Download)
 
-[GitHub Releases](https://github.com/blue1st/napepro-helper/releases) から最新の macOS 用インストーラー (`.dmg`) をダウンロードし、`Applications` フォルダにドラッグ＆ドロップしてください。
+[GitHub Releases](https://github.com/blue1st/NapeProHelper/releases) から最新の macOS 用インストーラー (`.dmg`) をダウンロードし、`Applications` フォルダにドラッグ＆ドロップしてください。
 
 > 💡 **初回起動時の注意 (macOS)**: 未署名アプリケーションのメッセージが表示された場合は、副ボタン（右クリック）で「開く」を選択するか、`システム設定 > プライバシーとセキュリティ` から開くを許可してください。
 

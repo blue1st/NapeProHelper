@@ -43,10 +43,10 @@ cask "${CASK_NAME}" do
   version "${VERSION}"
   sha256 "${SHA256}"
 
-  url "https://github.com/blue1st/napepro-helper/releases/download/v#{version}/${DMG_NAME}"
+  url "https://github.com/blue1st/NapeProHelper/releases/download/v#{version}/${DMG_NAME}"
   name "Nape Pro Helper"
   desc "System tray companion helper application for Keychron Nape Pro trackball device"
-  homepage "https://github.com/blue1st/napepro-helper"
+  homepage "https://github.com/blue1st/NapeProHelper"
 
   app "Nape Pro Helper.app"
 
