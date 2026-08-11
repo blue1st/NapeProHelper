@@ -551,8 +551,16 @@ pub fn parse_qmk_keycode(code: u16) -> (String, String, String) {
         0x008D => return ("key".into(), "KC_HIRG".into(), "ひらがな".into()),
         0x0C50 => return ("key".into(), "Scroll_Up".into(), "上スクロール".into()),
         0x0C4F => return ("key".into(), "Scroll_Down".into(), "下スクロール".into()),
-        0x0A50 => return ("key".into(), "LAG(KC_LEFT)".into(), "Cmd + Alt + ←".into()),
-        0x0A4F => return ("key".into(), "LAG(KC_RGHT)".into(), "Cmd + Alt + →".into()),
+        0x0A50 => {
+            let gui_str = if cfg!(target_os = "macos") { "Cmd" } else { "Win" };
+            let alt_str = if cfg!(target_os = "macos") { "Option" } else { "Alt" };
+            return ("key".into(), "LAG(KC_LEFT)".into(), format!("{} + {} + ←", gui_str, alt_str));
+        }
+        0x0A4F => {
+            let gui_str = if cfg!(target_os = "macos") { "Cmd" } else { "Win" };
+            let alt_str = if cfg!(target_os = "macos") { "Option" } else { "Alt" };
+            return ("key".into(), "LAG(KC_RGHT)".into(), format!("{} + {} + →", gui_str, alt_str));
+        }
         0x0C52 => return ("key".into(), "Scroll_Left".into(), "左スクロール".into()),
         0x0C51 => return ("key".into(), "Scroll_Right".into(), "右スクロール".into()),
         0x522A => return ("octashift".into(), "Switch_8Dir".into(), "8方向を切り替え".into()),
@@ -692,8 +700,8 @@ pub fn parse_qmk_keycode(code: u16) -> (String, String, String) {
         };
 
         let mut mods = Vec::new();
-        if is_gui { mods.push("Cmd"); }
-        if is_alt { mods.push("Option"); }
+        if is_gui { mods.push(if cfg!(target_os = "macos") { "Cmd" } else { "Win" }); }
+        if is_alt { mods.push(if cfg!(target_os = "macos") { "Option" } else { "Alt" }); }
         if is_shift { mods.push("Shift"); }
         if is_ctrl { mods.push("Ctrl"); }
 
