@@ -430,12 +430,20 @@ pub fn read_layer_button_mappings(device: &hidapi::HidDevice, layer: u8) -> Opti
                     };
 
                     // Button M1 (Left click main button) -> Wired: 11, Wireless: 4
-                    let m1_c = pick_valid_keycode(11, 4, 0x0001);
+                    let raw_m1 = pick_valid_keycode(11, 4, 0x0001);
+                    let m1_c = match raw_m1 {
+                        0x00D1 | 0x7E29 | 0x0000 => 0x0001, // Left Click / 左クリック
+                        _ => raw_m1,
+                    };
                     let (act1, code1, desc1) = parse_qmk_keycode(m1_c);
                     mappings.push(ButtonMapping { button_id: 1, name: "ボタン M1".into(), action_type: act1, key_code: code1, description: desc1 });
 
                     // Button M2 (Right click main button) -> Wired: 12, Wireless: 5
-                    let m2_c = pick_valid_keycode(12, 5, 0x0002);
+                    let raw_m2 = pick_valid_keycode(12, 5, 0x0002);
+                    let m2_c = match raw_m2 {
+                        0x00D2 | 0x7E29 | 0x0000 => 0x0002, // Right Click / 右クリック
+                        _ => raw_m2,
+                    };
                     let (act2, code2, desc2) = parse_qmk_keycode(m2_c);
                     mappings.push(ButtonMapping { button_id: 2, name: "ボタン M2".into(), action_type: act2, key_code: code2, description: desc2 });
 
@@ -459,15 +467,19 @@ pub fn read_layer_button_mappings(device: &hidapi::HidDevice, layer: u8) -> Opti
                     let (act6, code6, desc6) = parse_qmk_keycode(g4_c);
                     mappings.push(ButtonMapping { button_id: 6, name: "ボタン 04 (G4)".into(), action_type: act6, key_code: code6, description: desc6 });
 
-                    // Scroll Ring Top Slot (id 7) -> Wired: 13, Wireless: 6
-                    let ring_up_c = pick_valid_keycode(13, 6, 0x7E2B);
-                    let (act7, code7, desc7) = parse_qmk_keycode(ring_up_c);
-                    mappings.push(ButtonMapping { button_id: 7, name: "スクロールリング (上 / Vol Up)".into(), action_type: act7, key_code: code7, description: desc7 });
+                    // Scroll Ring Top Slot (id 7) -> Default Scroll Down
+                    let raw_ring_top = pick_valid_keycode(13, 6, 0x0C4F);
+                    let ring_top_c = match raw_ring_top {
+                        0x522B | 0x7E29 | 0x0000 => 0x0C4F, // Scroll Down / 下スクロール
+                        _ => raw_ring_top,
+                    };
+                    let (act7, code7, desc7) = parse_qmk_keycode(ring_top_c);
+                    mappings.push(ButtonMapping { button_id: 7, name: "スクロールリング (下スクロール)".into(), action_type: act7, key_code: code7, description: desc7 });
 
-                    // Scroll Ring Bottom Slot (id 8) -> Default Volume Down
-                    let ring_dn_c = 0x7E2C;
+                    // Scroll Ring Bottom Slot (id 8) -> Default Scroll Up
+                    let ring_dn_c = 0x0C50; // Scroll Up / 上にスクロール
                     let (act8, code8, desc8) = parse_qmk_keycode(ring_dn_c);
-                    mappings.push(ButtonMapping { button_id: 8, name: "スクロールリング (下 / Vol Down)".into(), action_type: act8, key_code: code8, description: desc8 });
+                    mappings.push(ButtonMapping { button_id: 8, name: "スクロールリング (上にスクロール)".into(), action_type: act8, key_code: code8, description: desc8 });
 
                     return Some(mappings);
                 }
@@ -763,33 +775,24 @@ pub fn scan_hid_devices(config: &mut AppConfig) -> bool {
                 }
 
                 if let Ok(device) = dev_info.open_device(&api) {
-                    for layer in 0..8u8 {
-                        if let Some(mappings) = read_layer_button_mappings(&device, layer) {
-                            config.device.button_mappings.insert(layer, mappings);
+                    let is_empty_mappings = config.device.button_mappings.is_empty() || config.device.button_mappings.values().all(|v| v.is_empty());
+                    if is_empty_mappings {
+                        for layer in 0..8u8 {
+                            if let Some(mappings) = read_layer_button_mappings(&device, layer) {
+                                config.device.button_mappings.insert(layer, mappings);
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(10));
                         }
-                        std::thread::sleep(std::time::Duration::from_millis(10));
                     }
 
                     if let Some(hl) = read_active_layer_official(&device) {
                         config.device.active_layer = hl;
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    std::thread::sleep(std::time::Duration::from_millis(5));
 
-                    let mut hw_layer_angles = HashMap::new();
-                    for layer in 0..8u8 {
-                        if let Some(ang) = read_octashift_angle_official(&device, layer) {
-                            hw_layer_angles.insert(layer, ang);
-                        }
-                        std::thread::sleep(std::time::Duration::from_millis(5));
-                    }
-
-                    if !hw_layer_angles.is_empty() {
-                        if let Some(&ang) = hw_layer_angles.get(&config.device.active_layer) {
-                            config.device.octashift_angle = ang;
-                        } else if let Some(&ang) = hw_layer_angles.get(&0) {
-                            config.device.octashift_angle = ang;
-                        }
-                        config.device.layer_octashift_angles = hw_layer_angles;
+                    if let Some(ang) = read_octashift_angle_official(&device, config.device.active_layer) {
+                        config.device.octashift_angle = ang;
+                        config.device.layer_octashift_angles.insert(config.device.active_layer, ang);
                     }
 
                     if let Some(dpi) = read_active_pointer_dpi_official(&device) {
