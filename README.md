@@ -21,7 +21,31 @@
 
 **NapePro Helper** は、トラックボールデバイス [Keychron Nape Pro](https://link.amazon/B0c0wPGJg) のためのシステムトレイ・ヘルパーアプリケーションです。
 
-本アプリケーションはシステムトレイ（メニューバー）に常駐し、手のホームポジションやデバイスの設置角度に合わせたトラックボールの操作角度補正（**OctaShift**）、DPI感度調整、スクロール・ジェスチャーモードの切り替え、およびアクティブレイヤーやキーマップ状態のリアルタイム可視化を強力にサポートします。
+### 💡 開発の背景 (Motivation)
+
+Keychron Nape Pro は、設置角度やキーマップを工夫することで様々なシーンに柔軟に対応できる魅力的なトラックボールであり、その高度なカスタマイズ性を活かすために 7 つもの豊富なレイヤー切り替え機能を備えています。
+
+しかし、**現在適用されているレイヤーをハードウェア（本体）側で確認する手段がない**ため、積極的にレイヤーを切り替えて運用するのが難しいという課題がありました。
+
+**NapePro Helper** は、アクティブなレイヤーやキーマップ状態を画面上・システムトレイでリアルタイムに可視化（Visualizer）し、設置角度に合わせた操作角度補正（**OctaShift**）などと合わせて、Nape Pro 本来の柔軟なマルチレイヤー運用を快適に行えるようにするために開発されました。
+
+---
+
+## 📸 スクリーンショット (Screenshots)
+
+### macOS
+
+| メインウィンドウ (Visualizer & Settings) | メニューバー常駐 (System Tray Companion) |
+| :---: | :---: |
+| <img src="docs/images/mac_main.png" alt="macOS Main Window" width="580"> | <img src="docs/images/mac_tray.png" alt="macOS Menu Bar" width="260"> |
+| レイヤー切替、OctaShift 認識角度調整、キーマップ状態のリアルタイム可視化 | メニューバーからアクティブレイヤーの確認・ワンクリック切替や各種設定変更 |
+
+### Windows
+
+| メインウィンドウ (Visualizer & Settings) | タスクバー常駐 (System Tray Companion) |
+| :---: | :---: |
+| <img src="docs/images/win_main.png" alt="Windows Main Window" width="580"> | <img src="docs/images/win_tray.png" alt="Windows Taskbar Tray Menu" width="280"> |
+| Windowsキーバインド・レイヤー・OctaShift認識角度のリアルタイム可視化 | タスクバー（システムトレイ）からアクティブレイヤーの確認・ワンクリック切替 |
 
 ---
 
