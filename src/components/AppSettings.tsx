@@ -5,9 +5,10 @@ import { isEnabled, enable, disable } from '@tauri-apps/plugin-autostart';
 interface AppSettingsProps {
   config: AppConfig;
   onUpdateConfig: (newConfig: Partial<AppConfig>) => void;
+  onNavigateToAbout?: () => void;
 }
 
-export const AppSettings: React.FC<AppSettingsProps> = ({ config, onUpdateConfig }) => {
+export const AppSettings: React.FC<AppSettingsProps> = ({ config, onUpdateConfig, onNavigateToAbout }) => {
   const [autostartActive, setAutostartActive] = React.useState(config.autostart);
 
   React.useEffect(() => {
@@ -87,7 +88,24 @@ export const AppSettings: React.FC<AppSettingsProps> = ({ config, onUpdateConfig
             />
           </button>
         </div>
+
+        {/* About App & Version Info Shortcut */}
+        {onNavigateToAbout && (
+          <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <h4 className="text-sm font-semibold text-white">バージョン情報 &amp; リポジトリ</h4>
+              <p className="text-xs text-slate-400 mt-0.5">アプリのバージョン確認、アップデート、GitHubリポジトリへのリンク</p>
+            </div>
+            <button
+              onClick={onNavigateToAbout}
+              className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-lg text-xs font-semibold border border-slate-700 hover:border-slate-600 transition-all"
+            >
+              アプリ情報を開く
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 };
+

@@ -416,6 +416,20 @@ fn open_keychron_launcher() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(&url).spawn();
+
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("cmd").args(["/C", "start", "", &url]).spawn();
+
+    #[cfg(target_os = "linux")]
+    let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+
+    Ok(())
+}
+
 pub fn run() {
     let config_state = ConfigState::new();
     let initial_config = {
@@ -706,6 +720,7 @@ pub fn run() {
             refresh_from_hardware,
             debug_dump_eeprom,
             open_keychron_launcher,
+            open_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

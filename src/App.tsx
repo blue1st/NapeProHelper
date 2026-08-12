@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { NapeVisualizer } from './components/NapeVisualizer';
 import { AngleAndSensitivity } from './components/AngleAndSensitivity';
 import { AppSettings } from './components/AppSettings';
+import { AboutApp } from './components/AboutApp';
 import { invoke } from '@tauri-apps/api/core';
 import { Info, CheckCircle2, Cpu, Globe, ExternalLink } from 'lucide-react';
 
@@ -32,9 +33,10 @@ const initialEmptyConfig: AppConfig = {
 
 export function App() {
   const [config, setConfig] = useState<AppConfig>(initialEmptyConfig);
-  const [activeTab, setActiveTab] = useState<'visualizer' | 'hardware' | 'settings'>('visualizer');
+  const [activeTab, setActiveTab] = useState<'visualizer' | 'hardware' | 'settings' | 'about'>('visualizer');
   const [showTrayHelp, setShowTrayHelp] = useState<boolean>(false);
   const [isReloading, setIsReloading] = useState<boolean>(false);
+  const [hasUpdate, setHasUpdate] = useState<boolean>(false);
 
   const handleReloadDeviceConfig = async () => {
     setIsReloading(true);
@@ -195,6 +197,7 @@ export function App() {
             { id: 'visualizer', label: 'プレビュー' },
             { id: 'hardware', label: 'トラックボール' },
             { id: 'settings', label: '設定' },
+            { id: 'about', label: 'アプリ情報', hasBadge: hasUpdate },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -202,12 +205,19 @@ export function App() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
                 className={
-                  isActive
+                  (isActive
                     ? 'text-indigo-400 border-b-2 border-indigo-400 py-2.5 text-xs font-semibold'
-                    : 'text-slate-500 hover:text-slate-300 py-2.5 border-b-2 border-transparent text-xs font-medium transition-colors'
+                    : 'text-slate-500 hover:text-slate-300 py-2.5 border-b-2 border-transparent text-xs font-medium transition-colors') +
+                  ' relative flex items-center gap-1.5'
                 }
               >
-                {tab.label}
+                <span>{tab.label}</span>
+                {tab.hasBadge && (
+                  <span className="flex h-2 w-2 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                )}
               </button>
             );
           })}
@@ -232,7 +242,15 @@ export function App() {
 
       {/* Main Content Viewport */}
       <main className="flex-1 p-4 overflow-y-auto max-w-6xl w-full mx-auto">
-        {!device.is_connected ? (
+        {activeTab === 'about' ? (
+          <AboutApp onUpdateDetected={() => setHasUpdate(true)} />
+        ) : activeTab === 'settings' ? (
+          <AppSettings
+            config={config}
+            onUpdateConfig={(newCfg) => setConfig((prev) => ({ ...prev, ...newCfg }))}
+            onNavigateToAbout={() => setActiveTab('about')}
+          />
+        ) : !device.is_connected ? (
           <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-10 text-center max-w-xl mx-auto my-12 space-y-6 shadow-2xl backdrop-blur-md">
             <div className="w-20 h-20 bg-indigo-500/10 border border-indigo-500/30 rounded-full flex items-center justify-center mx-auto text-indigo-400 animate-pulse">
               <Cpu className="w-10 h-10" />
@@ -270,13 +288,6 @@ export function App() {
                 onUpdateDpi={handleUpdateDpi}
                 onToggleScrollMode={handleToggleScrollMode}
                 onToggleGestureMode={handleToggleGestureMode}
-              />
-            )}
-
-            {activeTab === 'settings' && (
-              <AppSettings
-                config={config}
-                onUpdateConfig={(newCfg) => setConfig((prev) => ({ ...prev, ...newCfg }))}
               />
             )}
           </>
