@@ -10,6 +10,7 @@ pub struct TrayMenuState {
     pub layer_items: Mutex<Vec<MenuItem<tauri::Wry>>>,
     pub scroll_item: Mutex<MenuItem<tauri::Wry>>,
     pub gesture_item: Mutex<MenuItem<tauri::Wry>>,
+    pub auto_switch_item: Mutex<MenuItem<tauri::Wry>>,
     pub dpi_items: Mutex<Vec<(u16, MenuItem<tauri::Wry>)>>,
     pub dpi_submenu: Mutex<Option<Submenu<tauri::Wry>>>,
 }
@@ -54,7 +55,14 @@ pub fn sync_tray_menu(app: &tauri::AppHandle, cfg: &AppConfig) {
             let _ = item.set_text(format!("{}🖐️ ジェスチャー機能 ({})", mark, status));
         }
 
-        // 4. Sync DPI Items & Submenu Title
+        // 4. Sync Auto Switch Mode Item
+        if let Ok(item) = tray_state.auto_switch_item.lock() {
+            let mark = if cfg.auto_switch_enabled { "✓ " } else { "   " };
+            let status = if cfg.auto_switch_enabled { "ON" } else { "OFF" };
+            let _ = item.set_text(format!("{}🔄 自動切り替え ({})", mark, status));
+        }
+
+        // 5. Sync DPI Items & Submenu Title
         if let Ok(dpi_list) = tray_state.dpi_items.lock() {
             for (dpi_val, item) in dpi_list.iter() {
                 let mark = if dev.pointer_dpi == *dpi_val { "✓ " } else { "   " };
@@ -430,6 +438,216 @@ fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+static LAST_EXTERNAL_APP: Mutex<Option<ActiveAppInfo>> = Mutex::new(None);
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct ActiveAppInfo {
+    pub app_name: String,
+    pub title: String,
+    pub process_path: String,
+}
+
+#[tauri::command]
+fn get_active_app_info() -> Result<ActiveAppInfo, String> {
+    if let Ok(win) = active_win_pos_rs::get_active_window() {
+        let app_name = win.app_name.trim().to_lowercase();
+        let proc_path = win.process_path.to_string_lossy().to_lowercase();
+        let is_self = app_name.contains("napepro") || proc_path.contains("napepro");
+
+        if !is_self {
+            let info = ActiveAppInfo {
+                app_name: win.app_name,
+                title: win.title,
+                process_path: win.process_path.to_string_lossy().to_string(),
+            };
+            if let Ok(mut guard) = LAST_EXTERNAL_APP.lock() {
+                *guard = Some(info.clone());
+            }
+            return Ok(info);
+        }
+    }
+
+    // NapePro Helper 自体がアクティブな場合は、記憶している直前の外部アプリを返す
+    if let Ok(guard) = LAST_EXTERNAL_APP.lock() {
+        if let Some(ref info) = *guard {
+            return Ok(info.clone());
+        }
+    }
+
+    Err("直前に使用していたアプリケーション情報を取得できませんでした。".into())
+}
+
+#[tauri::command]
+async fn get_active_app_info_delayed(delay_seconds: u64) -> Result<ActiveAppInfo, String> {
+    tokio::time::sleep(std::time::Duration::from_secs(delay_seconds)).await;
+    match active_win_pos_rs::get_active_window() {
+        Ok(win) => {
+            let info = ActiveAppInfo {
+                app_name: win.app_name,
+                title: win.title,
+                process_path: win.process_path.to_string_lossy().to_string(),
+            };
+            let app_name = info.app_name.trim().to_lowercase();
+            let proc_path = info.process_path.to_lowercase();
+            if !app_name.contains("napepro") && !proc_path.contains("napepro") {
+                if let Ok(mut guard) = LAST_EXTERNAL_APP.lock() {
+                    *guard = Some(info.clone());
+                }
+            }
+            Ok(info)
+        }
+        Err(_) => Err("アプリケーション情報を取得できませんでした。".into()),
+    }
+}
+
+#[tauri::command]
+async fn update_auto_switch_config(
+    app: tauri::AppHandle,
+    enabled: bool,
+    default_layer: Option<u8>,
+    rules: Vec<config::AutoSwitchRule>,
+    state: State<'_, ConfigState>,
+) -> Result<AppConfig, String> {
+    let state_arc = state.0.clone();
+    let cfg = tauri::async_runtime::spawn_blocking(move || {
+        let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+        cfg.auto_switch_enabled = enabled;
+        cfg.auto_switch_default_layer = default_layer;
+        cfg.auto_switch_rules = rules;
+        config::save_config_to_file(&cfg);
+        Ok::<AppConfig, String>(cfg.clone())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    sync_tray_menu(&app, &cfg);
+    let _ = app.emit("config-updated", &cfg);
+    Ok(cfg)
+}
+
+fn start_auto_switch_monitor(app_handle: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut last_app_key = String::new();
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+            if let Ok(win) = active_win_pos_rs::get_active_window() {
+                let app_name = win.app_name.trim().to_lowercase();
+                let title = win.title.trim().to_lowercase();
+                let proc_path = win.process_path.to_string_lossy().to_lowercase();
+
+                let is_self = app_name.contains("napepro") || proc_path.contains("napepro");
+
+                if !is_self {
+                    if let Ok(mut guard) = LAST_EXTERNAL_APP.lock() {
+                        *guard = Some(ActiveAppInfo {
+                            app_name: win.app_name.clone(),
+                            title: win.title.clone(),
+                            process_path: win.process_path.to_string_lossy().to_string(),
+                        });
+                    }
+                }
+            }
+
+            let (enabled, default_layer, rules, active_layer) = {
+                if let Some(state) = app_handle.try_state::<ConfigState>() {
+                    if let Ok(cfg) = state.0.lock() {
+                        (
+                            cfg.auto_switch_enabled,
+                            cfg.auto_switch_default_layer,
+                            cfg.auto_switch_rules.clone(),
+                            cfg.device.active_layer,
+                        )
+                    } else {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+            };
+
+            if !enabled {
+                last_app_key.clear();
+                continue;
+            }
+
+            if let Ok(win) = active_win_pos_rs::get_active_window() {
+                let app_name = win.app_name.trim().to_lowercase();
+                let title = win.title.trim().to_lowercase();
+                let proc_path = win.process_path.to_string_lossy().to_lowercase();
+
+                if app_name.contains("napepro") || proc_path.contains("napepro") {
+                    continue;
+                }
+
+                let current_app_key = format!("{}:{}", app_name, title);
+                if current_app_key == last_app_key {
+                    continue;
+                }
+
+                let mut matched_layer: Option<u8> = None;
+
+                for rule in &rules {
+                    if !rule.enabled {
+                        continue;
+                    }
+                    let rule_target = rule.app_name.trim().to_lowercase();
+                    if rule_target.is_empty() {
+                        continue;
+                    }
+
+                    if app_name.contains(&rule_target) || title.contains(&rule_target) || proc_path.contains(&rule_target) {
+                        matched_layer = Some(rule.target_layer);
+                        break;
+                    }
+                }
+
+                let target_layer_to_set = matched_layer.or(default_layer);
+                last_app_key = current_app_key;
+
+                if let Some(target_layer) = target_layer_to_set {
+                    if target_layer != active_layer {
+                        let app_handle_clone = app_handle.clone();
+                        let _ = tauri::async_runtime::spawn_blocking(move || {
+                            if let Some(state) = app_handle_clone.try_state::<ConfigState>() {
+                                if let Ok(mut cfg) = state.0.lock() {
+                                    cfg.device.active_layer = target_layer;
+                                    if cfg.device.is_connected {
+                                        if let Ok(api) = hidapi::HidApi::new() {
+                                            for dev_info in api.device_list() {
+                                                let vid = dev_info.vendor_id();
+                                                let pid = dev_info.product_id();
+                                                let prod = dev_info.product_string().unwrap_or("").to_lowercase();
+                                                if ((vid == 0x3434 && pid == 0x0440) || prod.contains("nape"))
+                                                    && dev_info.usage_page() == 0xff60
+                                                    && dev_info.usage() == 0x0061
+                                                {
+                                                    if let Ok(hid_dev) = dev_info.open_device(&api) {
+                                                        let mut req = [0u8; 33];
+                                                        req[0] = 0x00;
+                                                        req[1] = 0xA7;
+                                                        req[2] = 45;
+                                                        req[3] = target_layer + 1;
+                                                        let _ = hid_dev.write(&req);
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    config::save_config_to_file(&cfg);
+                                    sync_tray_menu(&app_handle_clone, &cfg);
+                                    let _ = app_handle_clone.emit("config-updated", cfg.clone());
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    });
+}
+
 pub fn run() {
     let config_state = ConfigState::new();
     let initial_config = {
@@ -458,9 +676,10 @@ pub fn run() {
                 layer_items.push(item);
             }
 
-            // Trackball Controls (Scroll Toggle, Gesture Toggle)
+            // Trackball Controls (Scroll Toggle, Gesture Toggle, Auto Switch Toggle)
             let scroll_item = MenuItem::with_id(app, "toggle_scroll", "📜 ボールスクロール", true, None::<&str>)?;
             let gesture_item = MenuItem::with_id(app, "toggle_gesture", "🖐️ ジェスチャー機能", true, None::<&str>)?;
+            let auto_switch_item = MenuItem::with_id(app, "toggle_auto_switch", "🔄 自動切り替え", true, None::<&str>)?;
 
             // DPI Submenu Items (Official Keychron Presets: 400 / 800 / 1800 / 3200 / 4000)
             let dpi_preset_values: Vec<u16> = vec![400, 800, 1800, 3200, 4000];
@@ -486,6 +705,7 @@ pub fn run() {
             menu_items.push(&sep2);
             menu_items.push(&scroll_item);
             menu_items.push(&gesture_item);
+            menu_items.push(&auto_switch_item);
             menu_items.push(&dpi_sub);
             menu_items.push(&sep3);
             menu_items.push(&quit_i);
@@ -496,12 +716,14 @@ pub fn run() {
                 layer_items: Mutex::new(layer_items),
                 scroll_item: Mutex::new(scroll_item),
                 gesture_item: Mutex::new(gesture_item),
+                auto_switch_item: Mutex::new(auto_switch_item),
                 dpi_items: Mutex::new(dpi_items),
                 dpi_submenu: Mutex::new(Some(dpi_sub)),
             };
 
             sync_tray_menu(app.handle(), &initial_config);
             app.manage(tray_state);
+            start_auto_switch_monitor(app.handle().clone());
 
             let is_autostart = std::env::args().any(|arg| arg == "--autostart");
             if is_autostart {
@@ -656,6 +878,23 @@ pub fn run() {
                                 let _ = app_handle.emit("config-updated", &cfg);
                             }
                         });
+                    } else if id == "toggle_auto_switch" {
+                        let app_handle = app_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = app_handle.state::<ConfigState>();
+                            let state_arc = state.0.clone();
+                            let cfg_res = tauri::async_runtime::spawn_blocking(move || {
+                                let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+                                cfg.auto_switch_enabled = !cfg.auto_switch_enabled;
+                                config::save_config_to_file(&cfg);
+                                Ok::<AppConfig, String>(cfg.clone())
+                            }).await;
+
+                            if let Ok(Ok(cfg)) = cfg_res {
+                                sync_tray_menu(&app_handle, &cfg);
+                                let _ = app_handle.emit("config-updated", &cfg);
+                            }
+                        });
                     } else if id.starts_with("dpi_") {
                         if let Ok(dpi_val) = id.trim_start_matches("dpi_").parse::<u16>() {
                             let app_handle = app_handle.clone();
@@ -721,6 +960,9 @@ pub fn run() {
             debug_dump_eeprom,
             open_keychron_launcher,
             open_url,
+            get_active_app_info,
+            get_active_app_info_delayed,
+            update_auto_switch_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

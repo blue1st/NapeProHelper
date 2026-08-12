@@ -1,6 +1,7 @@
 import React from 'react';
 import { AppConfig } from '../types';
 import { isEnabled, enable, disable } from '@tauri-apps/plugin-autostart';
+import { AutoSwitchSettings } from './AutoSwitchSettings';
 
 interface AppSettingsProps {
   config: AppConfig;
@@ -48,7 +49,7 @@ export const AppSettings: React.FC<AppSettingsProps> = ({ config, onUpdateConfig
         <h2 className="text-sm font-semibold text-slate-200">設定</h2>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {/* Startup Boot Launch */}
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
           <div>
@@ -89,21 +90,9 @@ export const AppSettings: React.FC<AppSettingsProps> = ({ config, onUpdateConfig
           </button>
         </div>
 
-        {/* About App & Version Info Shortcut */}
-        {onNavigateToAbout && (
-          <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
-            <div>
-              <h4 className="text-sm font-semibold text-white">バージョン情報 &amp; リポジトリ</h4>
-              <p className="text-xs text-slate-400 mt-0.5">アプリのバージョン確認、アップデート、GitHubリポジトリへのリンク</p>
-            </div>
-            <button
-              onClick={onNavigateToAbout}
-              className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-lg text-xs font-semibold border border-slate-700 hover:border-slate-600 transition-all"
-            >
-              アプリ情報を開く
-            </button>
-          </div>
-        )}
+        {/* Auto Layer Switching Section */}
+        <AutoSwitchSettings config={config} onUpdateConfig={onUpdateConfig} />
+
       </div>
     </div>
   );

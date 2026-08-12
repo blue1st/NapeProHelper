@@ -7,13 +7,8 @@ import {
   AlertCircle,
   Sparkles,
   Download,
-  ShieldCheck,
-  Cpu,
   Tag,
   Calendar,
-  MessageSquare,
-  Globe,
-  Heart,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
@@ -21,11 +16,13 @@ import packageJson from '../../package.json';
 
 export const CURRENT_VERSION = packageJson.version;
 export const REPO_URL = 'https://github.com/blue1st/NapeProHelper';
-
 export const RELEASES_URL = 'https://github.com/blue1st/NapeProHelper/releases';
-export const ISSUES_URL = 'https://github.com/blue1st/NapeProHelper/issues';
-export const KEYCHRON_LAUNCHER_URL = 'https://launcher.keychron.com/';
 export const GITHUB_API_LATEST_RELEASE = 'https://api.github.com/repos/blue1st/NapeProHelper/releases/latest';
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_KEY_TIME = 'nape_update_check_time';
+const CACHE_KEY_RELEASE = 'nape_update_check_release';
+const CACHE_KEY_STATUS = 'nape_update_check_status';
 
 export interface ReleaseInfo {
   version: string;
@@ -86,7 +83,32 @@ export const AboutApp: React.FC<AboutAppProps> = ({ onUpdateDetected }) => {
     }
   };
 
-  const checkForUpdates = useCallback(async () => {
+  const checkForUpdates = useCallback(async (force = false) => {
+    // 24時間以内の場合はキャッシュを使用（強制確認ボタン押下時を除く）
+    if (!force) {
+      try {
+        const cachedTime = localStorage.getItem(CACHE_KEY_TIME);
+        const cachedStatus = localStorage.getItem(CACHE_KEY_STATUS);
+        const cachedReleaseStr = localStorage.getItem(CACHE_KEY_RELEASE);
+
+        if (cachedTime && cachedStatus) {
+          const lastTime = parseInt(cachedTime, 10);
+          if (Date.now() - lastTime < ONE_DAY_MS) {
+            const cachedRelease = cachedReleaseStr ? JSON.parse(cachedReleaseStr) : null;
+            setStatus(cachedStatus as any);
+            setLatestRelease(cachedRelease);
+            setLastCheckedAt(new Date(lastTime));
+            if (cachedStatus === 'update-available' && cachedRelease && onUpdateDetected) {
+              onUpdateDetected(cachedRelease);
+            }
+            return;
+          }
+        }
+      } catch {
+        // キャッシュ読み込みエラー時はそのままGitHub API問い合わせへ
+      }
+    }
+
     setStatus('checking');
     setErrorMsg(null);
 
@@ -99,9 +121,11 @@ export const AboutApp: React.FC<AboutAppProps> = ({ onUpdateDetected }) => {
 
       if (!res.ok) {
         if (res.status === 404) {
-          // No release published yet on GitHub
           setStatus('up-to-date');
-          setLastCheckedAt(new Date());
+          const now = new Date();
+          setLastCheckedAt(now);
+          localStorage.setItem(CACHE_KEY_TIME, now.getTime().toString());
+          localStorage.setItem(CACHE_KEY_STATUS, 'up-to-date');
           return;
         }
         throw new Error(`GitHub API HTTP ${res.status}`);
@@ -120,40 +144,44 @@ export const AboutApp: React.FC<AboutAppProps> = ({ onUpdateDetected }) => {
         publishedAt: data.published_at ? new Date(data.published_at).toLocaleDateString('ja-JP') : '',
       };
 
+      const now = new Date();
       setLatestRelease(releaseInfo);
-      setLastCheckedAt(new Date());
+      setLastCheckedAt(now);
 
       const isNewer = compareSemver(appVersion, version) > 0;
-      if (isNewer) {
-        setStatus('update-available');
-        if (onUpdateDetected) {
-          onUpdateDetected(releaseInfo);
-        }
-      } else {
-        setStatus('up-to-date');
+      const newStatus = isNewer ? 'update-available' : 'up-to-date';
+      setStatus(newStatus);
+
+      localStorage.setItem(CACHE_KEY_TIME, now.getTime().toString());
+      localStorage.setItem(CACHE_KEY_STATUS, newStatus);
+      localStorage.setItem(CACHE_KEY_RELEASE, JSON.stringify(releaseInfo));
+
+      if (isNewer && onUpdateDetected) {
+        onUpdateDetected(releaseInfo);
       }
     } catch (err: any) {
       console.warn('Failed to check updates from GitHub Releases API:', err);
       setStatus('error');
       setErrorMsg(err.message || '更新の確認中にエラーが発生しました');
-      setLastCheckedAt(new Date());
     }
   }, [appVersion, onUpdateDetected]);
 
   useEffect(() => {
-    checkForUpdates();
+    checkForUpdates(false);
   }, [checkForUpdates]);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-8">
-      {/* Hero / App Branding Card */}
+      {/* 1. Hero / App Branding Card */}
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900/90 to-indigo-950/40 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl backdrop-blur-md">
         <div className="absolute -right-12 -bottom-12 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-start gap-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/25 shrink-0 border border-indigo-400/30">
-              <Cpu className="w-9 h-9" />
-            </div>
+            <img
+              src="/app-icon.png"
+              alt="Nape Pro Helper Icon"
+              className="w-16 h-16 rounded-2xl object-cover shadow-lg shadow-indigo-500/25 shrink-0 border border-indigo-400/30"
+            />
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-2xl font-bold text-white tracking-tight">Nape Pro Helper</h1>
@@ -181,7 +209,7 @@ export const AboutApp: React.FC<AboutAppProps> = ({ onUpdateDetected }) => {
         </div>
       </div>
 
-      {/* Version Status & Release Check Card */}
+      {/* 2. Version Status & Release Check Card */}
       <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
           <div className="flex items-center gap-2.5">
@@ -190,12 +218,12 @@ export const AboutApp: React.FC<AboutAppProps> = ({ onUpdateDetected }) => {
             </div>
             <div>
               <h2 className="text-sm font-bold text-slate-100">バージョン &amp; アップデート確認</h2>
-              <p className="text-xs text-slate-400">GitHub Releases API を使用して最新のリリースを確認します</p>
+              <p className="text-xs text-slate-400">最新バージョンのリリース状況を確認します（自動チェック: 1日1回）</p>
             </div>
           </div>
 
           <button
-            onClick={checkForUpdates}
+            onClick={() => checkForUpdates(true)}
             disabled={status === 'checking'}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600/90 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl text-xs font-semibold transition-all shadow-md disabled:cursor-not-allowed"
           >
@@ -204,7 +232,7 @@ export const AboutApp: React.FC<AboutAppProps> = ({ onUpdateDetected }) => {
           </button>
         </div>
 
-        {/* Status display logic */}
+        {/* Status display */}
         {status === 'checking' && (
           <div className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4 flex items-center gap-3">
             <RefreshCw className="w-5 h-5 text-indigo-400 animate-spin shrink-0" />
@@ -223,7 +251,7 @@ export const AboutApp: React.FC<AboutAppProps> = ({ onUpdateDetected }) => {
                 <p className="font-bold text-emerald-300">最新バージョンを使用しています</p>
                 <p className="text-slate-400 text-[11px]">
                   現在お使いの v{appVersion} は最新版です。
-                  {lastCheckedAt && ` (最終確認: ${lastCheckedAt.toLocaleTimeString('ja-JP')})`}
+                  {lastCheckedAt && ` (確認日時: ${lastCheckedAt.toLocaleDateString('ja-JP')} ${lastCheckedAt.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })})`}
                 </p>
               </div>
             </div>
@@ -231,7 +259,7 @@ export const AboutApp: React.FC<AboutAppProps> = ({ onUpdateDetected }) => {
               onClick={() => openExternalUrl(RELEASES_URL)}
               className="text-xs text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1 underline underline-offset-2 shrink-0"
             >
-              <span>過去のリリース一覧</span>
+              <span>リリース履歴</span>
               <ExternalLink className="w-3 h-3" />
             </button>
           </div>
@@ -310,126 +338,6 @@ export const AboutApp: React.FC<AboutAppProps> = ({ onUpdateDetected }) => {
             </button>
           </div>
         )}
-      </div>
-
-      {/* Resource & Link Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* GitHub Repository */}
-        <div
-          onClick={() => openExternalUrl(REPO_URL)}
-          className="bg-slate-900/50 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 cursor-pointer transition-all duration-200 group flex items-start gap-4 shadow-lg"
-        >
-          <div className="p-3 bg-slate-800 text-indigo-400 group-hover:text-indigo-300 group-hover:bg-indigo-500/20 rounded-xl border border-slate-700 transition-colors shrink-0">
-            <Github className="w-6 h-6" />
-          </div>
-          <div className="space-y-1 flex-1">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">
-                GitHub Repository
-              </h3>
-              <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 transition-colors" />
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              ソースコードの閲覧、開発への貢献、スター登録はこちらから。
-            </p>
-          </div>
-        </div>
-
-        {/* Release Notes */}
-        <div
-          onClick={() => openExternalUrl(RELEASES_URL)}
-          className="bg-slate-900/50 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 cursor-pointer transition-all duration-200 group flex items-start gap-4 shadow-lg"
-        >
-          <div className="p-3 bg-slate-800 text-purple-400 group-hover:text-purple-300 group-hover:bg-purple-500/20 rounded-xl border border-slate-700 transition-colors shrink-0">
-            <Tag className="w-6 h-6" />
-          </div>
-          <div className="space-y-1 flex-1">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors">
-                リリース一覧 &amp; 変更履歴
-              </h3>
-              <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 transition-colors" />
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              過去の全バージョンの変更点やビルド済みインストーラーのダウンロード。
-            </p>
-          </div>
-        </div>
-
-        {/* Issue & Feedback */}
-        <div
-          onClick={() => openExternalUrl(ISSUES_URL)}
-          className="bg-slate-900/50 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 cursor-pointer transition-all duration-200 group flex items-start gap-4 shadow-lg"
-        >
-          <div className="p-3 bg-slate-800 text-emerald-400 group-hover:text-emerald-300 group-hover:bg-emerald-500/20 rounded-xl border border-slate-700 transition-colors shrink-0">
-            <MessageSquare className="w-6 h-6" />
-          </div>
-          <div className="space-y-1 flex-1">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white group-hover:text-emerald-300 transition-colors">
-                不具合報告・機能要望
-              </h3>
-              <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 transition-colors" />
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              動作の不具合や新機能のご提案は GitHub Issues にお寄せください。
-            </p>
-          </div>
-        </div>
-
-        {/* Keychron Launcher */}
-        <div
-          onClick={() => openExternalUrl(KEYCHRON_LAUNCHER_URL)}
-          className="bg-slate-900/50 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 cursor-pointer transition-all duration-200 group flex items-start gap-4 shadow-lg"
-        >
-          <div className="p-3 bg-slate-800 text-amber-400 group-hover:text-amber-300 group-hover:bg-amber-500/20 rounded-xl border border-slate-700 transition-colors shrink-0">
-            <Globe className="w-6 h-6" />
-          </div>
-          <div className="space-y-1 flex-1">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
-                Keychron Launcher (公式Web)
-              </h3>
-              <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 transition-colors" />
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Keychron 公式 Web VIA ツールを開いて、全キーマップ・マクロを編集。
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* System Technical Specifications Info */}
-      <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-5 space-y-3">
-        <div className="flex items-center gap-2 text-slate-300 border-b border-slate-800 pb-2.5">
-          <ShieldCheck className="w-4 h-4 text-indigo-400" />
-          <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">アプリ技術仕様 &amp; 環境</h3>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-          <div>
-            <span className="text-slate-500 text-[11px] block">アプリバージョン</span>
-            <span className="font-semibold text-slate-200">v{appVersion}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 text-[11px] block">フレームワーク</span>
-            <span className="font-semibold text-slate-200">Tauri v2 + React 19</span>
-          </div>
-          <div>
-            <span className="text-slate-500 text-[11px] block">デバイス接続方式</span>
-            <span className="font-semibold text-slate-200">USB / 2.4GHz (HID)</span>
-          </div>
-          <div>
-            <span className="text-slate-500 text-[11px] block">オクタシフト対応</span>
-            <span className="font-semibold text-slate-200">8方向角度リアルタイム同期</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer copyright / credit */}
-      <div className="text-center pt-2 text-xs text-slate-500 flex items-center justify-center gap-1.5">
-        <span>Made with</span>
-        <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500/20" />
-        <span>for Keychron Nape Pro users &bull; &copy; {new Date().getFullYear()} Nape Pro Helper</span>
       </div>
     </div>
   );

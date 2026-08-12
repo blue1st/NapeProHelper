@@ -22,9 +22,26 @@ export interface DeviceProfile {
   button_mappings: Record<number, ButtonMapping[]>;
 }
 
+export interface AutoSwitchRule {
+  id: string;
+  name: string;
+  app_name: string;
+  target_layer: number;
+  enabled: boolean;
+}
+
+export interface ActiveAppInfo {
+  app_name: string;
+  title: string;
+  process_path: string;
+}
+
 export interface AppConfig {
   autostart: boolean;
   minimize_to_tray: boolean;
   show_notifications: boolean;
+  auto_switch_enabled?: boolean;
+  auto_switch_default_layer?: number | null;
+  auto_switch_rules?: AutoSwitchRule[];
   device: DeviceProfile;
 }

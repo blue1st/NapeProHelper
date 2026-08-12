@@ -1,6 +1,6 @@
 import React from 'react';
 import { DeviceProfile } from '../types';
-import { Cpu, Wifi, Usb, Bluetooth, Info, RefreshCw } from 'lucide-react';
+import { Wifi, Usb, Bluetooth, Info, RefreshCw } from 'lucide-react';
 
 interface HeaderProps {
   device: DeviceProfile;
@@ -25,9 +25,11 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="h-12 px-4 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between backdrop-blur-md select-none sticky top-0 z-50">
       {/* Brand & Title */}
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
-          <Cpu className="w-4 h-4 text-white" />
-        </div>
+        <img
+          src="/app-icon.png"
+          alt="Nape Pro Helper"
+          className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-indigo-500/20 ring-1 ring-white/20"
+        />
         <h1 className="font-semibold text-sm text-white tracking-wide">Nape Pro Helper</h1>
       </div>
 

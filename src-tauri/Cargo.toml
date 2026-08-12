@@ -20,6 +20,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
 hidapi = "2.6.3"
+active-win-pos-rs = "0.8"
 
 [[bin]]
 name = "napepro-helper"

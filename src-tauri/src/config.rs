@@ -33,10 +33,25 @@ pub struct DeviceProfile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoSwitchRule {
+    pub id: String,
+    pub name: String,
+    pub app_name: String,
+    pub target_layer: u8,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub autostart: bool,
     pub minimize_to_tray: bool,
     pub show_notifications: bool,
+    #[serde(default)]
+    pub auto_switch_enabled: bool,
+    #[serde(default)]
+    pub auto_switch_default_layer: Option<u8>,
+    #[serde(default)]
+    pub auto_switch_rules: Vec<AutoSwitchRule>,
     pub device: DeviceProfile,
 }
 
@@ -46,6 +61,9 @@ impl Default for AppConfig {
             autostart: true,
             minimize_to_tray: true,
             show_notifications: true,
+            auto_switch_enabled: false,
+            auto_switch_default_layer: Some(0),
+            auto_switch_rules: Vec::new(),
             device: create_default_device("dev-nape-01", "Keychron Nape Pro", "USB / 2.4GHz", "", false),
         }
     }

@@ -6,7 +6,7 @@ import { AngleAndSensitivity } from './components/AngleAndSensitivity';
 import { AppSettings } from './components/AppSettings';
 import { AboutApp } from './components/AboutApp';
 import { invoke } from '@tauri-apps/api/core';
-import { Info, CheckCircle2, Cpu, Globe, ExternalLink } from 'lucide-react';
+import { Info, CheckCircle2, Globe, ExternalLink } from 'lucide-react';
 
 const defaultDevice: DeviceProfile = {
   id: 'dev-nape-01',
@@ -253,7 +253,7 @@ export function App() {
         ) : !device.is_connected ? (
           <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-10 text-center max-w-xl mx-auto my-12 space-y-6 shadow-2xl backdrop-blur-md">
             <div className="w-20 h-20 bg-indigo-500/10 border border-indigo-500/30 rounded-full flex items-center justify-center mx-auto text-indigo-400 animate-pulse">
-              <Cpu className="w-10 h-10" />
+              <img src="/app-icon.png" alt="Nape Pro Helper" className="w-14 h-14 rounded-2xl object-cover shadow-lg" />
             </div>
             <div className="space-y-2">
               <h2 className="text-xl font-bold text-slate-100">Keychron Nape Pro の接続待ち</h2>
