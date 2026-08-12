@@ -805,24 +805,24 @@ pub fn parse_qmk_keycode(code: u16) -> (String, String, String) {
     ("key".into(), format!("0x{:04X}", code), format!("Key (0x{:04X})", code))
 }
 
+pub fn is_target_nape_device(dev_info: &hidapi::DeviceInfo) -> bool {
+    let vid = dev_info.vendor_id();
+    let prod = dev_info.product_string().unwrap_or("").to_lowercase();
+
+    // Keychron Vendor ID (0x3434) or product string containing nape/keychron
+    // AND must strictly target VIA Raw HID endpoint (usage_page 0xff60, usage 0x0061)
+    let is_nape_match = vid == 0x3434 || prod.contains("nape") || prod.contains("keychron");
+    let is_raw_hid = dev_info.usage_page() == 0xff60 && dev_info.usage() == 0x0061;
+
+    is_nape_match && is_raw_hid
+}
+
 pub fn scan_hid_devices(config: &mut AppConfig) -> bool {
     let mut nape_found = false;
 
     if let Ok(api) = hidapi::HidApi::new() {
         for dev_info in api.device_list() {
-            let vid = dev_info.vendor_id();
-            let pid = dev_info.product_id();
-            let product_str = dev_info.product_string().unwrap_or("").to_lowercase();
-
-            let is_nape_pid = vid == 0x3434 && pid == 0x0440;
-            let is_nape_name = product_str.contains("nape");
-
-            if is_nape_pid || is_nape_name {
-                // Strictly target VIA Raw HID endpoint: must match BOTH usage_page AND usage
-                if dev_info.usage_page() != 0xff60 || dev_info.usage() != 0x0061 {
-                    continue;
-                }
-
+            if is_target_nape_device(dev_info) {
                 nape_found = true;
                 config.device.is_connected = true;
 
@@ -883,15 +883,7 @@ pub fn refresh_device_from_hardware(config: &mut AppConfig, _device_id: Option<&
     };
 
     for dev_info in api.device_list() {
-        let vid = dev_info.vendor_id();
-        let pid = dev_info.product_id();
-        let product_str = dev_info.product_string().unwrap_or("").to_lowercase();
-
-        let is_nape = (vid == 0x3434 && pid == 0x0440) || product_str.contains("nape");
-        if !is_nape {
-            continue;
-        }
-        if dev_info.usage_page() != 0xff60 || dev_info.usage() != 0x0061 {
+        if !is_target_nape_device(dev_info) {
             continue;
         }
 
@@ -989,8 +981,7 @@ mod tests {
             for dev_info in api.device_list() {
                 let vid = dev_info.vendor_id();
                 let pid = dev_info.product_id();
-                if (vid == 0x3434 && pid == 0x0440) || dev_info.product_string().unwrap_or("").to_lowercase().contains("nape") {
-                    if dev_info.usage_page() == 0xff60 && dev_info.usage() == 0x0061 {
+                if is_target_nape_device(dev_info) {
                         if let Ok(device) = dev_info.open_device(&api) {
                             println!("\n=== CONTINUOUS EEPROM DUMP (OFFSETS 0..280, 28 BYTES PER CHUNK) ===");
                             for idx in 0..10 {
@@ -1017,8 +1008,6 @@ mod tests {
                                         println!("Chunk {:2} (offset={:3}): {:?}", idx, offset, kcs);
                                     }
                                 }
-                                std::thread::sleep(std::time::Duration::from_millis(10));
-                            }
                         }
                     }
                 }

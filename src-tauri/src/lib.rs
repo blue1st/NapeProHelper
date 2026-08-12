@@ -117,11 +117,7 @@ async fn set_active_layer(app: tauri::AppHandle, _device_id: Option<String>, lay
         if cfg.device.is_connected {
             if let Ok(api) = hidapi::HidApi::new() {
                 for dev_info in api.device_list() {
-                    let vid = dev_info.vendor_id();
-                    let pid = dev_info.product_id();
-                    let prod = dev_info.product_string().unwrap_or("").to_lowercase();
-                    let is_nape = (vid == 0x3434 && pid == 0x0440) || prod.contains("nape");
-                    if is_nape && dev_info.usage_page() == 0xff60 && dev_info.usage() == 0x0061 {
+                    if config::is_target_nape_device(dev_info) {
                         if let Ok(hid_dev) = dev_info.open_device(&api) {
                             let mut req = [0u8; 33];
                             req[0] = 0x00;
@@ -160,11 +156,7 @@ async fn set_octashift_angle(app: tauri::AppHandle, _device_id: Option<String>, 
         if cfg.device.is_connected {
             if let Ok(api) = hidapi::HidApi::new() {
                 for dev_info in api.device_list() {
-                    let vid = dev_info.vendor_id();
-                    let pid = dev_info.product_id();
-                    let prod = dev_info.product_string().unwrap_or("").to_lowercase();
-                    let is_nape = (vid == 0x3434 && pid == 0x0440) || prod.contains("nape");
-                    if is_nape && dev_info.usage_page() == 0xff60 && dev_info.usage() == 0x0061 {
+                    if config::is_target_nape_device(dev_info) {
                         if let Ok(hid_dev) = dev_info.open_device(&api) {
                             config::set_octashift_angle_official(&hid_dev, target_layer, angle);
                             break;
@@ -194,11 +186,7 @@ async fn set_pointer_dpi(app: tauri::AppHandle, _device_id: Option<String>, dpi:
         if cfg.device.is_connected {
             if let Ok(api) = hidapi::HidApi::new() {
                 for dev_info in api.device_list() {
-                    let vid = dev_info.vendor_id();
-                    let pid = dev_info.product_id();
-                    let prod = dev_info.product_string().unwrap_or("").to_lowercase();
-                    let is_nape = (vid == 0x3434 && pid == 0x0440) || prod.contains("nape");
-                    if is_nape && dev_info.usage_page() == 0xff60 && dev_info.usage() == 0x0061 {
+                    if config::is_target_nape_device(dev_info) {
                         if let Ok(hid_dev) = dev_info.open_device(&api) {
                             config::set_pointer_dpi_official(&hid_dev, dpi);
                             break;
@@ -228,11 +216,7 @@ async fn set_trackball_scroll_mode(app: tauri::AppHandle, _device_id: Option<Str
         if cfg.device.is_connected {
             if let Ok(api) = hidapi::HidApi::new() {
                 for dev_info in api.device_list() {
-                    let vid = dev_info.vendor_id();
-                    let pid = dev_info.product_id();
-                    let prod = dev_info.product_string().unwrap_or("").to_lowercase();
-                    let is_nape = (vid == 0x3434 && pid == 0x0440) || prod.contains("nape");
-                    if is_nape && dev_info.usage_page() == 0xff60 && dev_info.usage() == 0x0061 {
+                    if config::is_target_nape_device(dev_info) {
                         if let Ok(hid_dev) = dev_info.open_device(&api) {
                             config::set_trackball_force_gesture_scroll_official(&hid_dev, cfg.device.trackball_gesture_mode, cfg.device.trackball_scroll_mode);
                             break;
@@ -262,11 +246,7 @@ async fn set_trackball_gesture_mode(app: tauri::AppHandle, _device_id: Option<St
         if cfg.device.is_connected {
             if let Ok(api) = hidapi::HidApi::new() {
                 for dev_info in api.device_list() {
-                    let vid = dev_info.vendor_id();
-                    let pid = dev_info.product_id();
-                    let prod = dev_info.product_string().unwrap_or("").to_lowercase();
-                    let is_nape = (vid == 0x3434 && pid == 0x0440) || prod.contains("nape");
-                    if is_nape && dev_info.usage_page() == 0xff60 && dev_info.usage() == 0x0061 {
+                    if config::is_target_nape_device(dev_info) {
                         if let Ok(hid_dev) = dev_info.open_device(&api) {
                             config::set_trackball_force_gesture_scroll_official(&hid_dev, cfg.device.trackball_gesture_mode, cfg.device.trackball_scroll_mode);
                             break;
@@ -341,20 +321,12 @@ async fn debug_dump_eeprom() -> Result<String, String> {
         let mut output = String::new();
 
         for dev_info in api.device_list() {
-            let vid = dev_info.vendor_id();
-            let pid = dev_info.product_id();
-            let is_nape = (vid == 0x3434 && pid == 0x0440)
-                || dev_info.product_string().unwrap_or("").to_lowercase().contains("nape");
-
-            if !is_nape {
-                continue;
-            }
-            if dev_info.usage_page() != 0xff60 || dev_info.usage() != 0x0061 {
+            if !config::is_target_nape_device(dev_info) {
                 continue;
             }
 
             output.push_str(&format!("=== Device: VID={:04X} PID={:04X} serial={} ===\n",
-                vid, pid, dev_info.serial_number().unwrap_or("?")));
+                dev_info.vendor_id(), dev_info.product_id(), dev_info.serial_number().unwrap_or("?")));
 
             let device = dev_info.open_device(&api).map_err(|e| e.to_string())?;
 
@@ -614,13 +586,7 @@ fn start_auto_switch_monitor(app_handle: tauri::AppHandle) {
                                     if cfg.device.is_connected {
                                         if let Ok(api) = hidapi::HidApi::new() {
                                             for dev_info in api.device_list() {
-                                                let vid = dev_info.vendor_id();
-                                                let pid = dev_info.product_id();
-                                                let prod = dev_info.product_string().unwrap_or("").to_lowercase();
-                                                if ((vid == 0x3434 && pid == 0x0440) || prod.contains("nape"))
-                                                    && dev_info.usage_page() == 0xff60
-                                                    && dev_info.usage() == 0x0061
-                                                {
+                                                if config::is_target_nape_device(dev_info) {
                                                     if let Ok(hid_dev) = dev_info.open_device(&api) {
                                                         let mut req = [0u8; 33];
                                                         req[0] = 0x00;
@@ -775,13 +741,7 @@ pub fn run() {
                                     if cfg.device.is_connected {
                                         if let Ok(api) = hidapi::HidApi::new() {
                                             for dev_info in api.device_list() {
-                                                let vid = dev_info.vendor_id();
-                                                let pid = dev_info.product_id();
-                                                let prod = dev_info.product_string().unwrap_or("").to_lowercase();
-                                                if ((vid == 0x3434 && pid == 0x0440) || prod.contains("nape"))
-                                                    && dev_info.usage_page() == 0xff60
-                                                    && dev_info.usage() == 0x0061
-                                                {
+                                                if config::is_target_nape_device(dev_info) {
                                                     if let Ok(hid_dev) = dev_info.open_device(&api) {
                                                         let mut req = [0u8; 33];
                                                         req[0] = 0x00;
@@ -817,13 +777,7 @@ pub fn run() {
                                 if cfg.device.is_connected {
                                     if let Ok(api) = hidapi::HidApi::new() {
                                         for dev_info in api.device_list() {
-                                            let vid = dev_info.vendor_id();
-                                            let pid = dev_info.product_id();
-                                            let prod = dev_info.product_string().unwrap_or("").to_lowercase();
-                                            if ((vid == 0x3434 && pid == 0x0440) || prod.contains("nape"))
-                                                && dev_info.usage_page() == 0xff60
-                                                && dev_info.usage() == 0x0061
-                                            {
+                                                if config::is_target_nape_device(dev_info) {
                                                 if let Ok(hid_dev) = dev_info.open_device(&api) {
                                                     config::set_trackball_force_gesture_scroll_official(&hid_dev, cfg.device.trackball_gesture_mode, next_mode);
                                                     break;
@@ -853,13 +807,7 @@ pub fn run() {
                                 if cfg.device.is_connected {
                                     if let Ok(api) = hidapi::HidApi::new() {
                                         for dev_info in api.device_list() {
-                                            let vid = dev_info.vendor_id();
-                                            let pid = dev_info.product_id();
-                                            let prod = dev_info.product_string().unwrap_or("").to_lowercase();
-                                            if ((vid == 0x3434 && pid == 0x0440) || prod.contains("nape"))
-                                                && dev_info.usage_page() == 0xff60
-                                                && dev_info.usage() == 0x0061
-                                            {
+                                                if config::is_target_nape_device(dev_info) {
                                                 if let Ok(hid_dev) = dev_info.open_device(&api) {
                                                     config::set_trackball_force_gesture_scroll_official(&hid_dev, next_mode, cfg.device.trackball_scroll_mode);
                                                     break;
@@ -906,13 +854,7 @@ pub fn run() {
                                     if cfg.device.is_connected {
                                         if let Ok(api) = hidapi::HidApi::new() {
                                             for dev_info in api.device_list() {
-                                                let vid = dev_info.vendor_id();
-                                                let pid = dev_info.product_id();
-                                                let prod = dev_info.product_string().unwrap_or("").to_lowercase();
-                                                if ((vid == 0x3434 && pid == 0x0440) || prod.contains("nape"))
-                                                    && dev_info.usage_page() == 0xff60
-                                                    && dev_info.usage() == 0x0061
-                                                {
+                                                if config::is_target_nape_device(dev_info) {
                                                     if let Ok(hid_dev) = dev_info.open_device(&api) {
                                                         config::set_pointer_dpi_official(&hid_dev, dpi_val);
                                                         break;

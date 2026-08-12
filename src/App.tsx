@@ -6,7 +6,7 @@ import { AngleAndSensitivity } from './components/AngleAndSensitivity';
 import { AppSettings } from './components/AppSettings';
 import { AboutApp } from './components/AboutApp';
 import { invoke } from '@tauri-apps/api/core';
-import { Info, CheckCircle2, Globe, ExternalLink } from 'lucide-react';
+import { Info, CheckCircle2, Globe, ExternalLink, AlertTriangle } from 'lucide-react';
 
 const defaultDevice: DeviceProfile = {
   id: 'dev-nape-01',
@@ -251,17 +251,46 @@ export function App() {
             onNavigateToAbout={() => setActiveTab('about')}
           />
         ) : !device.is_connected ? (
-          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-10 text-center max-w-xl mx-auto my-12 space-y-6 shadow-2xl backdrop-blur-md">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8 text-center max-w-xl mx-auto my-8 space-y-6 shadow-2xl backdrop-blur-md">
             <div className="w-20 h-20 bg-indigo-500/10 border border-indigo-500/30 rounded-full flex items-center justify-center mx-auto text-indigo-400 animate-pulse">
               <img src="/app-icon.png" alt="Nape Pro Helper" className="w-14 h-14 rounded-2xl object-cover shadow-lg" />
             </div>
             <div className="space-y-2">
               <h2 className="text-xl font-bold text-slate-100">Keychron Nape Pro の接続待ち</h2>
               <p className="text-xs text-slate-400 leading-relaxed">
-                USB-C ケーブルまたは 2.4GHz レシーバーで Keychron Nape Pro を PC に接続してください。<br />
+                USB-C ケーブルまたは 2.4GHz レシーバー（USBドングル）で Keychron Nape Pro を PC に接続してください。<br />
                 接続が検知されると、自動的に実機と同期し、ビジュアル操作画面が開きます。
               </p>
             </div>
+
+            {/* Connection mode guide card */}
+            <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 text-left space-y-3">
+              <div className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 border-b border-slate-800/60 pb-2">
+                <Info className="w-4 h-4 text-indigo-400" />
+                <span>接続方式と動作サポート状況</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5 text-xs">
+                <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-xl p-3 space-y-1">
+                  <div className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>USB有線 / 2.4GHz無線</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    全機能対応。リアルタイムレイヤー切り替えや設定同期が可能です。
+                  </p>
+                </div>
+                <div className="bg-amber-950/20 border border-amber-500/20 rounded-xl p-3 space-y-1">
+                  <div className="font-semibold text-amber-400 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Bluetooth 接続</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    VIA Raw HID 仕様上通信が制限されるため、Bluetooth モードでは同期・設定変更ができません。
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <button
               onClick={() => invoke('open_keychron_launcher')}
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-500/25"

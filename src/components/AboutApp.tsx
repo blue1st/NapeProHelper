@@ -9,6 +9,7 @@ import {
   Download,
   Tag,
   Calendar,
+  Info,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
@@ -338,6 +339,41 @@ export const AboutApp: React.FC<AboutAppProps> = ({ onUpdateDetected }) => {
             </button>
           </div>
         )}
+      </div>
+
+      {/* 3. Connection Specification & Requirements Card */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+        <div className="flex items-center gap-2.5 border-b border-slate-800/80 pb-4">
+          <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg">
+            <Info className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-100">対応デバイス &amp; 接続仕様</h2>
+            <p className="text-xs text-slate-400">本アプリで使用可能な接続パターンと注意事項</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-2">
+            <div className="flex items-center gap-2 text-emerald-400 font-bold">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>USB有線 / 2.4GHz USBドングル</span>
+            </div>
+            <p className="text-slate-300 leading-relaxed text-[11px]">
+              VIA Raw HID パケット経由での完全同期に対応しています。リアルタイムレイヤー自動切り替え、OctaShift 8方向角度設定、DPI変更、ボールスクロール・ジェスチャー機能の制御が可能です。
+            </p>
+          </div>
+
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-2">
+            <div className="flex items-center gap-2 text-amber-400 font-bold">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>Bluetooth 接続の制限</span>
+            </div>
+            <p className="text-slate-300 leading-relaxed text-[11px]">
+              Bluetooth 接続時は、OS・ハードウェアのHID仕様上、VIA Raw HID エンドポイントが無効化されるため、アプリとの同期・通信ができません。設定変更や同期を行う場合は USB 有線または 2.4GHz ドングルをご利用ください。
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
