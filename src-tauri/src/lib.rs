@@ -533,7 +533,6 @@ fn start_auto_switch_monitor(app_handle: tauri::AppHandle) {
 
             if let Ok(win) = active_win_pos_rs::get_active_window() {
                 let app_name = win.app_name.trim().to_lowercase();
-                let title = win.title.trim().to_lowercase();
                 let proc_path = win.process_path.to_string_lossy().to_lowercase();
 
                 let is_self = app_name.contains("napepro") || proc_path.contains("napepro");
