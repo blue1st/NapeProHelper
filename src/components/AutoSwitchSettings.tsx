@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AppConfig, AutoSwitchRule, ActiveAppInfo } from '../types';
 import { invoke } from '@tauri-apps/api/core';
-import { RefreshCw, Plus, Trash2, Layers, Monitor, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { RefreshCw, Plus, Trash2, Layers, Monitor, CheckCircle2, AlertCircle, Clock, Info, Globe } from 'lucide-react';
 
 interface AutoSwitchSettingsProps {
   config: AppConfig;
@@ -109,7 +109,7 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
   const handleAddRule = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRuleName.trim() || !newAppName.trim()) {
-      setErrorMsg('ルール名と対象アプリ識別子を入力してください');
+      setErrorMsg('ルール名と対象名を入力してください');
       return;
     }
 
@@ -143,6 +143,15 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
     return `Layer ${layerId}`;
   };
 
+  // Helper to extract a probable website name from browser title
+  const extractTitleKeyword = (title: string, appName: string): string | null => {
+    if (!title) return null;
+    const cleanTitle = title.replace(new RegExp(appName, 'gi'), '').replace(/[-–—|:]\s*$/, '').trim();
+    if (!cleanTitle) return null;
+    const parts = cleanTitle.split(/[-–—|]/).map((p) => p.trim()).filter(Boolean);
+    return parts[0] || cleanTitle;
+  };
+
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-5 space-y-4">
       {/* Header & Main Enable Switch */}
@@ -153,7 +162,7 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
           </div>
           <div>
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              アクティブアプリ連動・自動レイヤー切り替え
+              アプリ &amp; Webサイト連動 自動レイヤー切り替え
               {isEnabled && (
                 <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">
                   ACTIVE
@@ -161,7 +170,7 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
               )}
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              フォーカスされたアプリ（プロセス名）に応じて自動的にレイヤーを切り替えます
+              アプリ（プロセス名）やWebサイト（ブラウザのウィンドウタイトル名）に応じてレイヤーを自動切り替えします
             </p>
           </div>
         </div>
@@ -180,14 +189,28 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
         </button>
       </div>
 
+      {/* Feature Explanation Banner */}
+      <div className="bg-indigo-950/30 border border-indigo-500/20 rounded-xl p-3.5 text-xs text-indigo-200/90 flex items-start gap-3">
+        <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <p className="font-semibold text-indigo-200 flex items-center gap-1.5">
+            💡 アプリ名・Webサイト（タブタイトル）の両方に対応しています
+          </p>
+          <p className="text-[11px] text-slate-300 leading-relaxed">
+            <span className="font-semibold text-white">アプリ指定:</span> <code className="bg-indigo-900/40 text-indigo-300 px-1 py-0.5 rounded">code</code> や <code className="bg-indigo-900/40 text-indigo-300 px-1 py-0.5 rounded">photoshop</code> などのプロセス名。<br />
+            <span className="font-semibold text-white">Webサイト指定:</span> ChromeやSafariで開いているタブのタイトルに含まれるキーワード（例: <code className="bg-indigo-900/40 text-indigo-300 px-1 py-0.5 rounded">Figma</code>, <code className="bg-indigo-900/40 text-indigo-300 px-1 py-0.5 rounded">YouTube</code>, <code className="bg-indigo-900/40 text-indigo-300 px-1 py-0.5 rounded">GitHub</code>, <code className="bg-indigo-900/40 text-indigo-300 px-1 py-0.5 rounded">Notion</code> など）を指定すると、そのサイトを開いた時に自動切り替えされます。
+          </p>
+        </div>
+      </div>
+
       {/* Default Layer Setting (For rules unmatched apps) */}
       <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-3.5 flex items-center justify-between gap-3">
         <div>
           <h4 className="text-xs font-semibold text-white">
-            デフォルトレイヤー (ルール外のアプリ用)
+            デフォルトレイヤー (ルール外のアプリ・サイト用)
           </h4>
           <p className="text-[11px] text-slate-400 mt-0.5">
-            登録ルールに該当しないアプリがアクティブになった際の復帰先レイヤー
+            登録ルールに該当しないアプリやWebサイトを開いた際の復帰先レイヤー
           </p>
         </div>
 
@@ -252,7 +275,7 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
                   onClick={handleFetchDelayedApp}
                   disabled={fetchingAppInfo}
                   className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded text-xs font-medium text-slate-200 flex items-center gap-1 transition-colors disabled:opacity-50"
-                  title="3秒後にアクティブなアプリを取得します。ボタンを押した後に目的のアプリをクリックしてください。"
+                  title="3秒後にアクティブなアプリを取得します。ボタンを押した後に目的のアプリやブラウザタブをクリックしてください。"
                 >
                   <Clock className="w-3 h-3 text-amber-400" />
                   {countdown !== null ? `${countdown}秒後に取得...` : '3秒後に取得'}
@@ -261,14 +284,43 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
             </div>
 
             {fetchedApp && (
-              <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-lg p-2.5 text-xs text-indigo-200 flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold text-white">検出アプリ:</span> {fetchedApp.app_name}{' '}
-                  {fetchedApp.title && <span className="text-slate-400">({fetchedApp.title})</span>}
-                  <p className="text-[10px] text-indigo-300/80 mt-0.5">
-                    ※ 取得されたアプリ名がルールの検索キーワードにセットされました
-                  </p>
+              <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-lg p-3 text-xs text-indigo-200 space-y-2">
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-white">検出アプリ:</span> {fetchedApp.app_name}{' '}
+                    {fetchedApp.title && <span className="text-slate-300">({fetchedApp.title})</span>}
+                  </div>
+                </div>
+
+                {/* Quick set options for Browser Title vs App Name */}
+                <div className="flex items-center gap-2 pt-1 border-t border-indigo-500/20 text-[11px]">
+                  <span className="text-slate-400">クイック反映:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewRuleName(fetchedApp.app_name);
+                      setNewAppName(fetchedApp.app_name);
+                    }}
+                    className="px-2 py-0.5 bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700/60 text-indigo-200 rounded transition-colors"
+                  >
+                    アプリ名 ({fetchedApp.app_name})
+                  </button>
+
+                  {fetchedApp.title && extractTitleKeyword(fetchedApp.title, fetchedApp.app_name) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const kw = extractTitleKeyword(fetchedApp.title, fetchedApp.app_name)!;
+                        setNewRuleName(kw);
+                        setNewAppName(kw);
+                      }}
+                      className="px-2 py-0.5 bg-emerald-900/60 hover:bg-emerald-800 border border-emerald-700/60 text-emerald-200 rounded transition-colors flex items-center gap-1"
+                    >
+                      <Globe className="w-3 h-3 text-emerald-400" />
+                      サイト名キーワード ({extractTitleKeyword(fetchedApp.title, fetchedApp.app_name)})
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -285,7 +337,7 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
                 <label className="block text-[11px] font-medium text-slate-400 mb-1">ルール表示名</label>
                 <input
                   type="text"
-                  placeholder="例: VS Code"
+                  placeholder="例: VS Code や Figma"
                   value={newRuleName}
                   onChange={(e) => setNewRuleName(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
@@ -293,10 +345,10 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1">対象アプリ名 / プロセスキーワード</label>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">対象アプリ名 / サイト名キーワード</label>
                 <input
                   type="text"
-                  placeholder="例: Code または photoshop"
+                  placeholder="例: Code, Figma, YouTube"
                   value={newAppName}
                   onChange={(e) => setNewAppName(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"
@@ -317,6 +369,30 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
                   ))}
                 </select>
               </div>
+            </div>
+
+            {/* Common Preset Examples */}
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-400 pt-1 flex-wrap">
+              <span>よく使われる例:</span>
+              {[
+                { label: 'Figma (Web)', kw: 'Figma' },
+                { label: 'YouTube (Web)', kw: 'YouTube' },
+                { label: 'GitHub (Web)', kw: 'GitHub' },
+                { label: 'VS Code (アプリ)', kw: 'Code' },
+                { label: 'Photoshop (アプリ)', kw: 'Photoshop' },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => {
+                    if (!newRuleName) setNewRuleName(preset.kw);
+                    setNewAppName(preset.kw);
+                  }}
+                  className="px-2 py-0.5 bg-slate-900 hover:bg-slate-700 border border-slate-700 rounded text-slate-300 font-mono transition-colors"
+                >
+                  + {preset.label}
+                </button>
+              ))}
             </div>
 
             <div className="flex justify-end gap-2 pt-1">
@@ -345,7 +421,7 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
           <div className="bg-slate-900/30 border border-dashed border-slate-800 rounded-xl p-6 text-center">
             <Monitor className="w-8 h-8 text-slate-600 mx-auto mb-2 opacity-60" />
             <p className="text-xs text-slate-400">登録されている自動切替ルールがありません</p>
-            <p className="text-[11px] text-slate-500 mt-1">「新規ルール追加」から特定のアプリとレイヤーを紐づけられます</p>
+            <p className="text-[11px] text-slate-500 mt-1">「新規ルール追加」から特定のアプリ・Webサイトとレイヤーを紐づけられます</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -375,7 +451,7 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold text-white truncate">{rule.name}</span>
-                      <span className="text-[11px] font-mono text-indigo-300 bg-indigo-950/60 border border-indigo-800/40 px-2 py-0.5 rounded truncate">
+                      <span className="text-[11px] font-mono text-indigo-300 bg-indigo-950/60 border border-indigo-800/40 px-2 py-0.5 rounded truncate" title="判定キー（プロセス名またはタイトルキーワード）">
                         {rule.app_name}
                       </span>
                     </div>
@@ -404,3 +480,4 @@ export const AutoSwitchSettings: React.FC<AutoSwitchSettingsProps> = ({ config, 
     </div>
   );
 };
+
