@@ -71,7 +71,12 @@ pub fn sync_tray_menu(app: &tauri::AppHandle, cfg: &AppConfig) {
         }
         if let Ok(sub_guard) = tray_state.dpi_submenu.lock() {
             if let Some(ref sub) = *sub_guard {
-                let _ = sub.set_text(format!("🎯 DPI 設定 (現在 {} DPI)", dev.pointer_dpi));
+                let status_str = if dev.is_connected {
+                    format!("🎯 DPI 設定 (現在 {} DPI)", dev.pointer_dpi)
+                } else {
+                    "🎯 DPI 設定 (未接続)".to_string()
+                };
+                let _ = sub.set_text(status_str);
             }
         }
     }
@@ -81,13 +86,13 @@ pub fn sync_tray_menu(app: &tauri::AppHandle, cfg: &AppConfig) {
 async fn get_config(app: tauri::AppHandle, state: State<'_, ConfigState>) -> Result<AppConfig, String> {
     let state_arc = state.0.clone();
     let cfg = tauri::async_runtime::spawn_blocking(move || {
-        let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+        let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
         config::scan_hid_devices(&mut cfg);
         config::save_config_to_file(&cfg);
-        Ok::<AppConfig, String>(cfg.clone())
+        cfg.clone()
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
     sync_tray_menu(&app, &cfg);
     Ok(cfg)
@@ -97,12 +102,12 @@ async fn get_config(app: tauri::AppHandle, state: State<'_, ConfigState>) -> Res
 async fn check_connection(app: tauri::AppHandle, state: State<'_, ConfigState>) -> Result<AppConfig, String> {
     let state_arc = state.0.clone();
     let cfg = tauri::async_runtime::spawn_blocking(move || {
-        let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+        let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
         config::scan_hid_devices(&mut cfg);
-        Ok::<AppConfig, String>(cfg.clone())
+        cfg.clone()
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
     sync_tray_menu(&app, &cfg);
     Ok(cfg)
@@ -112,9 +117,10 @@ async fn check_connection(app: tauri::AppHandle, state: State<'_, ConfigState>) 
 async fn set_active_layer(app: tauri::AppHandle, _device_id: Option<String>, layer_id: u8, state: State<'_, ConfigState>) -> Result<AppConfig, String> {
     let state_arc = state.0.clone();
     let cfg = tauri::async_runtime::spawn_blocking(move || {
-        let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+        let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
         cfg.device.active_layer = layer_id;
         if cfg.device.is_connected {
+            let mut written = false;
             if let Ok(api) = hidapi::HidApi::new() {
                 for dev_info in api.device_list() {
                     if config::is_target_nape_device(dev_info) {
@@ -124,18 +130,23 @@ async fn set_active_layer(app: tauri::AppHandle, _device_id: Option<String>, lay
                             req[1] = 0xA7; // KC_MISC_CMD_GROUP
                             req[2] = 45;   // KC_USER_CMD_NAPE_SET_LAYER (45 / 0x2D)
                             req[3] = layer_id + 1; // 1-based layer index (1..8)
-                            let _ = hid_dev.write(&req);
+                            if hid_dev.write(&req).is_ok() {
+                                written = true;
+                            }
                             break;
                         }
                     }
                 }
             }
+            if !written {
+                cfg.device.is_connected = false;
+            }
         }
         config::save_config_to_file(&cfg);
-        Ok::<AppConfig, String>(cfg.clone())
+        cfg.clone()
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
     sync_tray_menu(&app, &cfg);
     let _ = app.emit("config-updated", &cfg);
@@ -146,7 +157,7 @@ async fn set_active_layer(app: tauri::AppHandle, _device_id: Option<String>, lay
 async fn set_octashift_angle(app: tauri::AppHandle, _device_id: Option<String>, layer_id: Option<u8>, angle: u16, state: State<'_, ConfigState>) -> Result<AppConfig, String> {
     let state_arc = state.0.clone();
     let cfg = tauri::async_runtime::spawn_blocking(move || {
-        let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+        let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
         let target_layer = layer_id.unwrap_or(cfg.device.active_layer);
         cfg.device.layer_octashift_angles.insert(target_layer, angle);
         if target_layer == cfg.device.active_layer {
@@ -154,22 +165,26 @@ async fn set_octashift_angle(app: tauri::AppHandle, _device_id: Option<String>, 
         }
 
         if cfg.device.is_connected {
+            let mut written = false;
             if let Ok(api) = hidapi::HidApi::new() {
                 for dev_info in api.device_list() {
                     if config::is_target_nape_device(dev_info) {
                         if let Ok(hid_dev) = dev_info.open_device(&api) {
-                            config::set_octashift_angle_official(&hid_dev, target_layer, angle);
+                            written = config::set_octashift_angle_official(&hid_dev, target_layer, angle);
                             break;
                         }
                     }
                 }
             }
+            if !written {
+                cfg.device.is_connected = false;
+            }
         }
         config::save_config_to_file(&cfg);
-        Ok::<AppConfig, String>(cfg.clone())
+        cfg.clone()
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
     sync_tray_menu(&app, &cfg);
     let _ = app.emit("config-updated", &cfg);
@@ -180,26 +195,30 @@ async fn set_octashift_angle(app: tauri::AppHandle, _device_id: Option<String>, 
 async fn set_pointer_dpi(app: tauri::AppHandle, _device_id: Option<String>, dpi: u16, state: State<'_, ConfigState>) -> Result<AppConfig, String> {
     let state_arc = state.0.clone();
     let cfg = tauri::async_runtime::spawn_blocking(move || {
-        let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+        let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
         cfg.device.pointer_dpi = dpi;
 
         if cfg.device.is_connected {
+            let mut written = false;
             if let Ok(api) = hidapi::HidApi::new() {
                 for dev_info in api.device_list() {
                     if config::is_target_nape_device(dev_info) {
                         if let Ok(hid_dev) = dev_info.open_device(&api) {
-                            config::set_pointer_dpi_official(&hid_dev, dpi);
+                            written = config::set_pointer_dpi_official(&hid_dev, dpi);
                             break;
                         }
                     }
                 }
             }
+            if !written {
+                cfg.device.is_connected = false;
+            }
         }
         config::save_config_to_file(&cfg);
-        Ok::<AppConfig, String>(cfg.clone())
+        cfg.clone()
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
     sync_tray_menu(&app, &cfg);
     let _ = app.emit("config-updated", &cfg);
@@ -210,26 +229,30 @@ async fn set_pointer_dpi(app: tauri::AppHandle, _device_id: Option<String>, dpi:
 async fn set_trackball_scroll_mode(app: tauri::AppHandle, _device_id: Option<String>, enabled: bool, state: State<'_, ConfigState>) -> Result<AppConfig, String> {
     let state_arc = state.0.clone();
     let cfg = tauri::async_runtime::spawn_blocking(move || {
-        let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+        let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
         cfg.device.trackball_scroll_mode = enabled;
 
         if cfg.device.is_connected {
+            let mut written = false;
             if let Ok(api) = hidapi::HidApi::new() {
                 for dev_info in api.device_list() {
                     if config::is_target_nape_device(dev_info) {
                         if let Ok(hid_dev) = dev_info.open_device(&api) {
-                            config::set_trackball_force_gesture_scroll_official(&hid_dev, cfg.device.trackball_gesture_mode, cfg.device.trackball_scroll_mode);
+                            written = config::set_trackball_force_gesture_scroll_official(&hid_dev, cfg.device.trackball_gesture_mode, cfg.device.trackball_scroll_mode);
                             break;
                         }
                     }
                 }
             }
+            if !written {
+                cfg.device.is_connected = false;
+            }
         }
         config::save_config_to_file(&cfg);
-        Ok::<AppConfig, String>(cfg.clone())
+        cfg.clone()
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
     sync_tray_menu(&app, &cfg);
     let _ = app.emit("config-updated", &cfg);
@@ -240,26 +263,30 @@ async fn set_trackball_scroll_mode(app: tauri::AppHandle, _device_id: Option<Str
 async fn set_trackball_gesture_mode(app: tauri::AppHandle, _device_id: Option<String>, enabled: bool, state: State<'_, ConfigState>) -> Result<AppConfig, String> {
     let state_arc = state.0.clone();
     let cfg = tauri::async_runtime::spawn_blocking(move || {
-        let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+        let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
         cfg.device.trackball_gesture_mode = enabled;
 
         if cfg.device.is_connected {
+            let mut written = false;
             if let Ok(api) = hidapi::HidApi::new() {
                 for dev_info in api.device_list() {
                     if config::is_target_nape_device(dev_info) {
                         if let Ok(hid_dev) = dev_info.open_device(&api) {
-                            config::set_trackball_force_gesture_scroll_official(&hid_dev, cfg.device.trackball_gesture_mode, cfg.device.trackball_scroll_mode);
+                            written = config::set_trackball_force_gesture_scroll_official(&hid_dev, cfg.device.trackball_gesture_mode, cfg.device.trackball_scroll_mode);
                             break;
                         }
                     }
                 }
             }
+            if !written {
+                cfg.device.is_connected = false;
+            }
         }
         config::save_config_to_file(&cfg);
-        Ok::<AppConfig, String>(cfg.clone())
+        cfg.clone()
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
     sync_tray_menu(&app, &cfg);
     let _ = app.emit("config-updated", &cfg);
@@ -279,7 +306,7 @@ async fn update_button_mapping(
 ) -> Result<AppConfig, String> {
     let state_arc = state.0.clone();
     let cfg = tauri::async_runtime::spawn_blocking(move || {
-        let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+        let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(mappings) = cfg.device.button_mappings.get_mut(&layer_id) {
             if let Some(b) = mappings.iter_mut().find(|m| m.button_id == button_id) {
                 b.action_type = action_type;
@@ -288,10 +315,10 @@ async fn update_button_mapping(
             }
         }
         config::save_config_to_file(&cfg);
-        Ok::<AppConfig, String>(cfg.clone())
+        cfg.clone()
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
     sync_tray_menu(&app, &cfg);
     let _ = app.emit("config-updated", &cfg);
@@ -302,12 +329,12 @@ async fn update_button_mapping(
 async fn refresh_from_hardware(app: tauri::AppHandle, _device_id: Option<String>, state: State<'_, ConfigState>) -> Result<AppConfig, String> {
     let state_arc = state.0.clone();
     let cfg = tauri::async_runtime::spawn_blocking(move || {
-        let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+        let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
         config::refresh_device_from_hardware(&mut cfg, None);
-        Ok::<AppConfig, String>(cfg.clone())
+        cfg.clone()
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
     sync_tray_menu(&app, &cfg);
     let _ = app.emit("config-updated", &cfg);
@@ -439,7 +466,6 @@ fn get_active_app_info() -> Result<ActiveAppInfo, String> {
         }
     }
 
-    // NapePro Helper 自体がアクティブな場合は、記憶している直前の外部アプリを返す
     if let Ok(guard) = LAST_EXTERNAL_APP.lock() {
         if let Some(ref info) = *guard {
             return Ok(info.clone());
@@ -482,19 +508,50 @@ async fn update_auto_switch_config(
 ) -> Result<AppConfig, String> {
     let state_arc = state.0.clone();
     let cfg = tauri::async_runtime::spawn_blocking(move || {
-        let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+        let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
         cfg.auto_switch_enabled = enabled;
         cfg.auto_switch_default_layer = default_layer;
         cfg.auto_switch_rules = rules;
         config::save_config_to_file(&cfg);
-        Ok::<AppConfig, String>(cfg.clone())
+        cfg.clone()
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
     sync_tray_menu(&app, &cfg);
     let _ = app.emit("config-updated", &cfg);
     Ok(cfg)
+}
+
+/// Native Rust Background HID Connection Monitor
+/// Independent of WebKit UI timer throttling, checks USB HID status every 2 seconds.
+/// Automatically handles device disconnects (e.g. KVM switch away) and re-connects (e.g. KVM switch back).
+fn start_hid_connection_monitor(app_handle: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+            let app_handle_clone = app_handle.clone();
+            let _ = tauri::async_runtime::spawn_blocking(move || {
+                let catch_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    if let Some(state) = app_handle_clone.try_state::<ConfigState>() {
+                        let mut cfg = state.0.lock().unwrap_or_else(|e| e.into_inner());
+                        let prev_connected = cfg.device.is_connected;
+                        let now_connected = config::scan_hid_devices(&mut cfg);
+
+                        if prev_connected != now_connected {
+                            config::save_config_to_file(&cfg);
+                            sync_tray_menu(&app_handle_clone, &cfg);
+                            let _ = app_handle_clone.emit("config-updated", cfg.clone());
+                        }
+                    }
+                }));
+                if catch_res.is_err() {
+                    eprintln!("Panic caught in HID connection monitor background task");
+                }
+            }).await;
+        }
+    });
 }
 
 fn start_auto_switch_monitor(app_handle: tauri::AppHandle) {
@@ -503,26 +560,27 @@ fn start_auto_switch_monitor(app_handle: tauri::AppHandle) {
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-            if let Ok(win) = active_win_pos_rs::get_active_window() {
-                let app_name = win.app_name.trim().to_lowercase();
-                let proc_path = win.process_path.to_string_lossy().to_lowercase();
+            let monitor_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if let Ok(win) = active_win_pos_rs::get_active_window() {
+                    let app_name = win.app_name.trim().to_lowercase();
+                    let proc_path = win.process_path.to_string_lossy().to_lowercase();
 
-                let is_self = app_name.contains("napepro") || proc_path.contains("napepro");
+                    let is_self = app_name.contains("napepro") || proc_path.contains("napepro");
 
-                if !is_self {
-                    if let Ok(mut guard) = LAST_EXTERNAL_APP.lock() {
-                        *guard = Some(ActiveAppInfo {
-                            app_name: win.app_name.clone(),
-                            title: win.title.clone(),
-                            process_path: win.process_path.to_string_lossy().to_string(),
-                        });
+                    if !is_self {
+                        if let Ok(mut guard) = LAST_EXTERNAL_APP.lock() {
+                            *guard = Some(ActiveAppInfo {
+                                app_name: win.app_name.clone(),
+                                title: win.title.clone(),
+                                process_path: win.process_path.to_string_lossy().to_string(),
+                            });
+                        }
                     }
                 }
-            }
 
-            let (enabled, default_layer, rules, active_layer) = {
-                if let Some(state) = app_handle.try_state::<ConfigState>() {
-                    if let Ok(cfg) = state.0.lock() {
+                let (enabled, default_layer, rules, active_layer) = {
+                    if let Some(state) = app_handle.try_state::<ConfigState>() {
+                        let cfg = state.0.lock().unwrap_or_else(|e| e.into_inner());
                         (
                             cfg.auto_switch_enabled,
                             cfg.auto_switch_default_layer,
@@ -530,60 +588,58 @@ fn start_auto_switch_monitor(app_handle: tauri::AppHandle) {
                             cfg.device.active_layer,
                         )
                     } else {
-                        continue;
+                        return;
                     }
-                } else {
-                    continue;
-                }
-            };
+                };
 
-            if !enabled {
-                last_app_key.clear();
-                continue;
-            }
-
-            if let Ok(win) = active_win_pos_rs::get_active_window() {
-                let app_name = win.app_name.trim().to_lowercase();
-                let title = win.title.trim().to_lowercase();
-                let proc_path = win.process_path.to_string_lossy().to_lowercase();
-
-                if app_name.contains("napepro") || proc_path.contains("napepro") {
-                    continue;
+                if !enabled {
+                    last_app_key.clear();
+                    return;
                 }
 
-                let current_app_key = format!("{}:{}", app_name, title);
-                if current_app_key == last_app_key {
-                    continue;
-                }
+                if let Ok(win) = active_win_pos_rs::get_active_window() {
+                    let app_name = win.app_name.trim().to_lowercase();
+                    let title = win.title.trim().to_lowercase();
+                    let proc_path = win.process_path.to_string_lossy().to_lowercase();
 
-                let mut matched_layer: Option<u8> = None;
-
-                for rule in &rules {
-                    if !rule.enabled {
-                        continue;
-                    }
-                    let rule_target = rule.app_name.trim().to_lowercase();
-                    if rule_target.is_empty() {
-                        continue;
+                    if app_name.contains("napepro") || proc_path.contains("napepro") {
+                        return;
                     }
 
-                    if app_name.contains(&rule_target) || title.contains(&rule_target) || proc_path.contains(&rule_target) {
-                        matched_layer = Some(rule.target_layer);
-                        break;
+                    let current_app_key = format!("{}:{}", app_name, title);
+                    if current_app_key == last_app_key {
+                        return;
                     }
-                }
 
-                let target_layer_to_set = matched_layer.or(default_layer);
-                last_app_key = current_app_key;
+                    let mut matched_layer: Option<u8> = None;
 
-                if let Some(target_layer) = target_layer_to_set {
-                    if target_layer != active_layer {
-                        let app_handle_clone = app_handle.clone();
-                        let _ = tauri::async_runtime::spawn_blocking(move || {
-                            if let Some(state) = app_handle_clone.try_state::<ConfigState>() {
-                                if let Ok(mut cfg) = state.0.lock() {
+                    for rule in &rules {
+                        if !rule.enabled {
+                            continue;
+                        }
+                        let rule_target = rule.app_name.trim().to_lowercase();
+                        if rule_target.is_empty() {
+                            continue;
+                        }
+
+                        if app_name.contains(&rule_target) || title.contains(&rule_target) || proc_path.contains(&rule_target) {
+                            matched_layer = Some(rule.target_layer);
+                            break;
+                        }
+                    }
+
+                    let target_layer_to_set = matched_layer.or(default_layer);
+                    last_app_key = current_app_key;
+
+                    if let Some(target_layer) = target_layer_to_set {
+                        if target_layer != active_layer {
+                            let app_handle_clone = app_handle.clone();
+                            let _ = tauri::async_runtime::spawn_blocking(move || {
+                                if let Some(state) = app_handle_clone.try_state::<ConfigState>() {
+                                    let mut cfg = state.0.lock().unwrap_or_else(|e| e.into_inner());
                                     cfg.device.active_layer = target_layer;
                                     if cfg.device.is_connected {
+                                        let mut written = false;
                                         if let Ok(api) = hidapi::HidApi::new() {
                                             for dev_info in api.device_list() {
                                                 if config::is_target_nape_device(dev_info) {
@@ -593,21 +649,29 @@ fn start_auto_switch_monitor(app_handle: tauri::AppHandle) {
                                                         req[1] = 0xA7;
                                                         req[2] = 45;
                                                         req[3] = target_layer + 1;
-                                                        let _ = hid_dev.write(&req);
+                                                        if hid_dev.write(&req).is_ok() {
+                                                            written = true;
+                                                        }
                                                         break;
                                                     }
                                                 }
                                             }
+                                        }
+                                        if !written {
+                                            cfg.device.is_connected = false;
                                         }
                                     }
                                     config::save_config_to_file(&cfg);
                                     sync_tray_menu(&app_handle_clone, &cfg);
                                     let _ = app_handle_clone.emit("config-updated", cfg.clone());
                                 }
-                            }
-                        });
+                            });
+                        }
                     }
                 }
+            }));
+            if monitor_res.is_err() {
+                eprintln!("Panic caught in auto switch monitor task");
             }
         }
     });
@@ -616,7 +680,7 @@ fn start_auto_switch_monitor(app_handle: tauri::AppHandle) {
 pub fn run() {
     let config_state = ConfigState::new();
     let initial_config = {
-        let guard = config_state.0.lock().unwrap();
+        let guard = config_state.0.lock().unwrap_or_else(|e| e.into_inner());
         guard.clone()
     };
 
@@ -688,7 +752,10 @@ pub fn run() {
 
             sync_tray_menu(app.handle(), &initial_config);
             app.manage(tray_state);
+
+            // Start background monitors (Auto App Switcher & HID Connection Monitor)
             start_auto_switch_monitor(app.handle().clone());
+            start_hid_connection_monitor(app.handle().clone());
 
             let is_autostart = std::env::args().any(|arg| arg == "--autostart");
             if is_autostart {
@@ -699,9 +766,12 @@ pub fn run() {
                 }
             }
 
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
+            let mut tray_builder = TrayIconBuilder::new().menu(&menu);
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+
+            let _tray = tray_builder
                 .on_menu_event(|app, event| {
                     let id = event.id.as_ref().to_string();
                     let app_handle = app.clone();
@@ -736,9 +806,10 @@ pub fn run() {
                                 let state = app_handle.state::<ConfigState>();
                                 let state_arc = state.0.clone();
                                 let cfg_res = tauri::async_runtime::spawn_blocking(move || {
-                                    let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+                                    let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
                                     cfg.device.active_layer = layer_idx;
                                     if cfg.device.is_connected {
+                                        let mut written = false;
                                         if let Ok(api) = hidapi::HidApi::new() {
                                             for dev_info in api.device_list() {
                                                 if config::is_target_nape_device(dev_info) {
@@ -748,18 +819,23 @@ pub fn run() {
                                                         req[1] = 0xA7;
                                                         req[2] = 45;
                                                         req[3] = layer_idx + 1;
-                                                        let _ = hid_dev.write(&req);
+                                                        if hid_dev.write(&req).is_ok() {
+                                                            written = true;
+                                                        }
                                                         break;
                                                     }
                                                 }
                                             }
                                         }
+                                        if !written {
+                                            cfg.device.is_connected = false;
+                                        }
                                     }
                                     config::save_config_to_file(&cfg);
-                                    Ok::<AppConfig, String>(cfg.clone())
+                                    cfg.clone()
                                 }).await;
 
-                                if let Ok(Ok(cfg)) = cfg_res {
+                                if let Ok(cfg) = cfg_res {
                                     sync_tray_menu(&app_handle, &cfg);
                                     let _ = app_handle.emit("config-updated", &cfg);
                                 }
@@ -771,26 +847,30 @@ pub fn run() {
                             let state = app_handle.state::<ConfigState>();
                             let state_arc = state.0.clone();
                             let cfg_res = tauri::async_runtime::spawn_blocking(move || {
-                                let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+                                let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
                                 let next_mode = !cfg.device.trackball_scroll_mode;
                                 cfg.device.trackball_scroll_mode = next_mode;
                                 if cfg.device.is_connected {
+                                    let mut written = false;
                                     if let Ok(api) = hidapi::HidApi::new() {
                                         for dev_info in api.device_list() {
-                                                if config::is_target_nape_device(dev_info) {
+                                            if config::is_target_nape_device(dev_info) {
                                                 if let Ok(hid_dev) = dev_info.open_device(&api) {
-                                                    config::set_trackball_force_gesture_scroll_official(&hid_dev, cfg.device.trackball_gesture_mode, next_mode);
+                                                    written = config::set_trackball_force_gesture_scroll_official(&hid_dev, cfg.device.trackball_gesture_mode, next_mode);
                                                     break;
                                                 }
                                             }
                                         }
                                     }
+                                    if !written {
+                                        cfg.device.is_connected = false;
+                                    }
                                 }
                                 config::save_config_to_file(&cfg);
-                                Ok::<AppConfig, String>(cfg.clone())
+                                cfg.clone()
                             }).await;
 
-                            if let Ok(Ok(cfg)) = cfg_res {
+                            if let Ok(cfg) = cfg_res {
                                 sync_tray_menu(&app_handle, &cfg);
                                 let _ = app_handle.emit("config-updated", &cfg);
                             }
@@ -801,26 +881,30 @@ pub fn run() {
                             let state = app_handle.state::<ConfigState>();
                             let state_arc = state.0.clone();
                             let cfg_res = tauri::async_runtime::spawn_blocking(move || {
-                                let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+                                let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
                                 let next_mode = !cfg.device.trackball_gesture_mode;
                                 cfg.device.trackball_gesture_mode = next_mode;
                                 if cfg.device.is_connected {
+                                    let mut written = false;
                                     if let Ok(api) = hidapi::HidApi::new() {
                                         for dev_info in api.device_list() {
-                                                if config::is_target_nape_device(dev_info) {
+                                            if config::is_target_nape_device(dev_info) {
                                                 if let Ok(hid_dev) = dev_info.open_device(&api) {
-                                                    config::set_trackball_force_gesture_scroll_official(&hid_dev, next_mode, cfg.device.trackball_scroll_mode);
+                                                    written = config::set_trackball_force_gesture_scroll_official(&hid_dev, next_mode, cfg.device.trackball_scroll_mode);
                                                     break;
                                                 }
                                             }
                                         }
                                     }
+                                    if !written {
+                                        cfg.device.is_connected = false;
+                                    }
                                 }
                                 config::save_config_to_file(&cfg);
-                                Ok::<AppConfig, String>(cfg.clone())
+                                cfg.clone()
                             }).await;
 
-                            if let Ok(Ok(cfg)) = cfg_res {
+                            if let Ok(cfg) = cfg_res {
                                 sync_tray_menu(&app_handle, &cfg);
                                 let _ = app_handle.emit("config-updated", &cfg);
                             }
@@ -831,13 +915,13 @@ pub fn run() {
                             let state = app_handle.state::<ConfigState>();
                             let state_arc = state.0.clone();
                             let cfg_res = tauri::async_runtime::spawn_blocking(move || {
-                                let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+                                let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
                                 cfg.auto_switch_enabled = !cfg.auto_switch_enabled;
                                 config::save_config_to_file(&cfg);
-                                Ok::<AppConfig, String>(cfg.clone())
+                                cfg.clone()
                             }).await;
 
-                            if let Ok(Ok(cfg)) = cfg_res {
+                            if let Ok(cfg) = cfg_res {
                                 sync_tray_menu(&app_handle, &cfg);
                                 let _ = app_handle.emit("config-updated", &cfg);
                             }
@@ -849,25 +933,29 @@ pub fn run() {
                                 let state = app_handle.state::<ConfigState>();
                                 let state_arc = state.0.clone();
                                 let cfg_res = tauri::async_runtime::spawn_blocking(move || {
-                                    let mut cfg = state_arc.lock().map_err(|e| e.to_string())?;
+                                    let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
                                     cfg.device.pointer_dpi = dpi_val;
                                     if cfg.device.is_connected {
+                                        let mut written = false;
                                         if let Ok(api) = hidapi::HidApi::new() {
                                             for dev_info in api.device_list() {
                                                 if config::is_target_nape_device(dev_info) {
                                                     if let Ok(hid_dev) = dev_info.open_device(&api) {
-                                                        config::set_pointer_dpi_official(&hid_dev, dpi_val);
+                                                        written = config::set_pointer_dpi_official(&hid_dev, dpi_val);
                                                         break;
                                                     }
                                                 }
                                             }
                                         }
+                                        if !written {
+                                            cfg.device.is_connected = false;
+                                        }
                                     }
                                     config::save_config_to_file(&cfg);
-                                    Ok::<AppConfig, String>(cfg.clone())
+                                    cfg.clone()
                                 }).await;
 
-                                if let Ok(Ok(cfg)) = cfg_res {
+                                if let Ok(cfg) = cfg_res {
                                     sync_tray_menu(&app_handle, &cfg);
                                     let _ = app_handle.emit("config-updated", &cfg);
                                 }

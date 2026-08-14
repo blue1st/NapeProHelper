@@ -823,15 +823,15 @@ pub fn scan_hid_devices(config: &mut AppConfig) -> bool {
     if let Ok(api) = hidapi::HidApi::new() {
         for dev_info in api.device_list() {
             if is_target_nape_device(dev_info) {
-                nape_found = true;
-                config.device.is_connected = true;
-
-                let raw_product = dev_info.product_string().unwrap_or("Keychron Nape Pro").to_string();
-                if !raw_product.is_empty() {
-                    config.device.name = raw_product;
-                }
-
                 if let Ok(device) = dev_info.open_device(&api) {
+                    nape_found = true;
+                    config.device.is_connected = true;
+
+                    let raw_product = dev_info.product_string().unwrap_or("Keychron Nape Pro").to_string();
+                    if !raw_product.is_empty() {
+                        config.device.name = raw_product;
+                    }
+
                     let is_empty_mappings = config.device.button_mappings.is_empty() || config.device.button_mappings.values().all(|v| v.is_empty());
                     if is_empty_mappings {
                         for layer in 0..8u8 {
@@ -861,9 +861,9 @@ pub fn scan_hid_devices(config: &mut AppConfig) -> bool {
                     if let Some(dpi) = read_active_pointer_dpi_official(&device) {
                         config.device.pointer_dpi = dpi;
                     }
-                }
 
-                break; // Connect to the first active Nape Pro
+                    break; // Connect to the first active Nape Pro
+                }
             }
         }
     }
