@@ -33,7 +33,9 @@ jobs:
           sudo apt-get install -y libudev-dev libusb-1.0-0-dev libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
