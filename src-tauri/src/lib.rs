@@ -599,6 +599,14 @@ fn start_auto_switch_monitor(app_handle: tauri::AppHandle) {
                         return;
                     }
 
+                    // Pause auto-switching when Keychron Launcher (WebHID configuration page) is active
+                    let is_keychron_launcher = title.contains("keychron launcher")
+                        || title.contains("launcher.keychron")
+                        || (title.contains("keychron") && title.contains("launcher"));
+                    if is_keychron_launcher {
+                        return;
+                    }
+
                     let current_app_key = format!("{}:{}", app_name, title);
                     if current_app_key == last_app_key {
                         return;
