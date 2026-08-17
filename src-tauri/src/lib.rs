@@ -413,14 +413,7 @@ async fn debug_dump_eeprom() -> Result<String, String> {
 
 #[tauri::command]
 fn open_keychron_launcher() -> Result<(), String> {
-    let url = "https://launcher.keychron.com/";
-    #[cfg(target_os = "macos")]
-    let _ = std::process::Command::new("open").arg(url).spawn();
-
-    #[cfg(target_os = "windows")]
-    let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
-
-    Ok(())
+    open_url("https://launcher.keychron.com/".to_string())
 }
 
 #[tauri::command]
@@ -793,12 +786,7 @@ pub fn run() {
                             }
                         }
                     } else if id == "open_launcher" {
-                        let url = "https://launcher.keychron.com/";
-                        #[cfg(target_os = "macos")]
-                        let _ = std::process::Command::new("open").arg(url).spawn();
-
-                        #[cfg(target_os = "windows")]
-                        let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+                        let _ = open_url("https://launcher.keychron.com/".to_string());
                     } else if id.starts_with("layer_") {
                         if let Ok(layer_idx) = id.trim_start_matches("layer_").parse::<u8>() {
                             let app_handle = app_handle.clone();
