@@ -15,11 +15,29 @@ export const Header: React.FC<HeaderProps> = ({
   onReloadDeviceConfig,
   isReloading = false,
 }) => {
-  const getInterfaceIcon = (type: string) => {
-    if (type.includes('USB')) return <Usb className="w-4 h-4 text-emerald-400" />;
-    if (type.includes('2.4G') || type.includes('ドングル')) return <Wifi className="w-4 h-4 text-cyan-400" />;
-    return <Bluetooth className="w-4 h-4 text-indigo-400" />;
+  const getInterfaceDetails = (type: string) => {
+    if (type.includes('2.4G') || type.includes('ドングル') || type.includes('Wireless')) {
+      return {
+        icon: <Wifi className="w-3.5 h-3.5 text-cyan-400" />,
+        label: '2.4GHz Mode',
+        badgeClass: 'bg-cyan-950/60 border-cyan-800/60 text-cyan-300',
+      };
+    }
+    if (type.includes('Bluetooth') || type.includes('BT')) {
+      return {
+        icon: <Bluetooth className="w-3.5 h-3.5 text-indigo-400" />,
+        label: 'Bluetooth Mode',
+        badgeClass: 'bg-indigo-950/60 border-indigo-800/60 text-indigo-300',
+      };
+    }
+    return {
+      icon: <Usb className="w-3.5 h-3.5 text-emerald-400" />,
+      label: 'USB Mode',
+      badgeClass: 'bg-emerald-950/60 border-emerald-800/60 text-emerald-300',
+    };
   };
+
+  const modeDetails = getInterfaceDetails(device.interface_type || 'USB');
 
   return (
     <header className="h-12 px-4 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between backdrop-blur-md select-none sticky top-0 z-50">
@@ -36,17 +54,27 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Connection Status Badge & Reload */}
       <div className="flex items-center gap-3">
         {/* Device Status Badge */}
-        <div className="flex items-center bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 gap-2 text-xs font-semibold">
-          {getInterfaceIcon(device.interface_type || 'USB')}
-          <span className="text-slate-200">{device.name || 'Keychron Nape Pro'}</span>
+        <div className="flex items-center bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 gap-2.5 text-xs font-semibold">
+          <span className="text-slate-100 font-bold tracking-wide">
+            Keychron Nape Pro
+          </span>
+
           {device.is_connected ? (
-            <span className="inline-flex items-center gap-1 text-emerald-400 text-[11px]">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              接続中
-            </span>
+            <>
+              <span
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border ${modeDetails.badgeClass}`}
+              >
+                {modeDetails.icon}
+                {modeDetails.label}
+              </span>
+              <span className="inline-flex items-center gap-1 text-emerald-400 text-[11px] font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                接続中
+              </span>
+            </>
           ) : (
-            <span className="inline-flex items-center gap-1 text-slate-500 text-[11px]">
-              <span className="w-2 h-2 rounded-full bg-slate-600" />
+            <span className="inline-flex items-center gap-1 text-slate-500 text-[11px] font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
               未接続
             </span>
           )}

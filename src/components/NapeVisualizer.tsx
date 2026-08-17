@@ -41,6 +41,49 @@ export const NapeVisualizer: React.FC<NapeVisualizerProps> = ({
 
   const currentAngle = device?.layer_octashift_angles?.[currentPreviewLayer] ?? device?.octashift_angle ?? 0;
 
+  // CANVAS & HARDWARE LAYOUT GEOMETRY
+  const CX = 440;
+  const CY = 290;
+  const rad = (currentAngle * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  // Precise physical button anchor points (relative to center) and local push vectors
+  const anchorSpecs = [
+    { id: 5, dx: -52, dy: -184, pushDx: -135, pushDy: 0 },   // 03 (Top-Left G3)
+    { id: 6, dx: 52, dy: -184, pushDx: 135, pushDy: 0 },    // 04 (Top-Right G4)
+    { id: 7, dx: 72, dy: 0, pushDx: 145, pushDy: 0 },       // Scroll Ring (Right Middle)
+    { id: 3, dx: -52, dy: 154, pushDx: -135, pushDy: 0 },    // 01 (Bottom-Left G1)
+    { id: 4, dx: 52, dy: 154, pushDx: 135, pushDy: 0 },     // 02 (Bottom-Right G2)
+    { id: 1, dx: -35, dy: 202, pushDx: -135, pushDy: 35 },   // M1 (Bottommost Left)
+    { id: 2, dx: 35, dy: 202, pushDx: 135, pushDy: 35 },    // M2 (Bottommost Right)
+  ];
+
+  const calculatedAnchors = anchorSpecs.map((item) => {
+    // Rotated button anchor point on hardware body (screen coords)
+    const bx = CX + item.dx * cos - item.dy * sin;
+    const by = CY + item.dx * sin + item.dy * cos;
+
+    // Rotated badge displacement vector
+    const rx = item.pushDx * cos - item.pushDy * sin;
+    const ry = item.pushDx * sin + item.pushDy * cos;
+
+    // Final badge center position in screen coords
+    const lx = bx + rx;
+    const ly = by + ry;
+
+    const isSelected = selectedButtonId === item.id || (item.id === 7 && (selectedButtonId === 7 || selectedButtonId === 8));
+
+    return {
+      ...item,
+      bx,
+      by,
+      lx,
+      ly,
+      isSelected,
+    };
+  });
+
   return (
     <div className="space-y-4">
       {/* 1. LARGE & WIDE LAYER SWITCHER TABS */}
@@ -155,65 +198,34 @@ export const NapeVisualizer: React.FC<NapeVisualizerProps> = ({
             <svg className="absolute inset-0 w-full h-full pointer-events-none z-20">
               <defs>
                 <linearGradient id="lineGlow" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#818cf8" stopOpacity="0.8" />
-                  <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.8" />
+                  <stop offset="0%" stopColor="#818cf8" stopOpacity="0.9" />
+                  <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.9" />
                 </linearGradient>
               </defs>
 
-              {(() => {
-                const CX = 440;
-                const CY = 290;
-                const rad = (currentAngle * Math.PI) / 180;
-                const cos = Math.cos(rad);
-                const sin = Math.sin(rad);
-
-                const anchors = [
-                  { id: 5, dx: -38, dy: -185, pushDx: -140, pushDy: -35 }, // 03 (Top-Left G3)
-                  { id: 6, dx: 38, dy: -185, pushDx: 140, pushDy: -35 },   // 04 (Top-Right G4)
-                  { id: 7, dx: 52, dy: -15, pushDx: 150, pushDy: 0 },      // Scroll Ring
-                  { id: 3, dx: -38, dy: 138, pushDx: -140, pushDy: -20 },   // 01 (Bottom-Left G1)
-                  { id: 4, dx: 38, dy: 138, pushDx: 140, pushDy: -20 },    // 02 (Bottom-Right G2)
-                  { id: 1, dx: -30, dy: 195, pushDx: -140, pushDy: 50 },    // M1 (Bottommost Left)
-                  { id: 2, dx: 30, dy: 195, pushDx: 140, pushDy: 50 },     // M2 (Bottommost Right)
-                ];
-
-                return anchors.map((item) => {
-                  const bx = CX + item.dx * cos - item.dy * sin;
-                  const by = CY + item.dx * sin + item.dy * cos;
-
-                  const rx = item.pushDx * cos - item.pushDy * sin;
-                  const ry = item.pushDx * sin + item.pushDy * cos;
-
-                  const lx = bx + rx;
-                  const ly = by + ry;
-
-                  const isSelected = selectedButtonId === item.id || (item.id === 7 && (selectedButtonId === 7 || selectedButtonId === 8));
-
-                  return (
-                    <g key={item.id} className="transition-all duration-500">
-                      {/* Leader Line */}
-                      <line
-                        x1={bx}
-                        y1={by}
-                        x2={lx}
-                        y2={ly}
-                        stroke={isSelected ? 'url(#lineGlow)' : '#475569'}
-                        strokeWidth={isSelected ? 2.5 : 1.5}
-                        strokeDasharray={isSelected ? 'none' : '4 3'}
-                        strokeOpacity={isSelected ? 1 : 0.6}
-                      />
-                      {/* Button Anchor Dot */}
-                      <circle
-                        cx={bx}
-                        cy={by}
-                        r={isSelected ? 5.5 : 3.5}
-                        fill={isSelected ? '#38bdf8' : '#818cf8'}
-                        className={isSelected ? 'animate-pulse' : ''}
-                      />
-                    </g>
-                  );
-                });
-              })()}
+              {calculatedAnchors.map((item) => (
+                <g key={item.id} className="transition-all duration-500">
+                  {/* Leader Line */}
+                  <line
+                    x1={item.bx}
+                    y1={item.by}
+                    x2={item.lx}
+                    y2={item.ly}
+                    stroke={item.isSelected ? 'url(#lineGlow)' : '#475569'}
+                    strokeWidth={item.isSelected ? 2.5 : 1.5}
+                    strokeDasharray={item.isSelected ? 'none' : '4 3'}
+                    strokeOpacity={item.isSelected ? 1 : 0.6}
+                  />
+                  {/* Button Anchor Dot */}
+                  <circle
+                    cx={item.bx}
+                    cy={item.by}
+                    r={item.isSelected ? 5.5 : 3.5}
+                    fill={item.isSelected ? '#38bdf8' : '#818cf8'}
+                    className={item.isSelected ? 'animate-pulse' : ''}
+                  />
+                </g>
+              ))}
             </svg>
 
             {/* AUTHENTIC KEYCHRON NAPE PRO BAR HARDWARE BODY (ROTATING IN CENTER) */}
@@ -354,123 +366,96 @@ export const NapeVisualizer: React.FC<NapeVisualizerProps> = ({
             </div>
 
             {/* DYNAMIC NON-OVERLAPPING LEVEL LABEL CARDS LAYER */}
-            {(() => {
-              const CX = 440;
-              const CY = 290;
-              const rad = (currentAngle * Math.PI) / 180;
-              const cos = Math.cos(rad);
-              const sin = Math.sin(rad);
-
-              const anchors = [
-                { id: 5, dx: -38, dy: -185, pushDx: -140, pushDy: -35 }, // 03 (Top-Left G3)
-                { id: 6, dx: 38, dy: -185, pushDx: 140, pushDy: -35 },   // 04 (Top-Right G4)
-                { id: 7, dx: 52, dy: -15, pushDx: 150, pushDy: 0 },      // Scroll Ring
-                { id: 3, dx: -38, dy: 138, pushDx: -140, pushDy: -20 },   // 01 (Bottom-Left G1)
-                { id: 4, dx: 38, dy: 138, pushDx: 140, pushDy: -20 },    // 02 (Bottom-Right G2)
-                { id: 1, dx: -30, dy: 195, pushDx: -140, pushDy: 50 },    // M1 (Bottommost Left)
-                { id: 2, dx: 30, dy: 195, pushDx: 140, pushDy: 50 },     // M2 (Bottommost Right)
-              ];
-
-              return anchors.map((item) => {
-                const bx = CX + item.dx * cos - item.dy * sin;
-                const by = CY + item.dx * sin + item.dy * cos;
-
-                const rx = item.pushDx * cos - item.pushDy * sin;
-                const ry = item.pushDx * sin + item.pushDy * cos;
-
-                const lx = bx + rx;
-                const ly = by + ry;
-
-                const isSelected = selectedButtonId === item.id || (item.id === 7 && (selectedButtonId === 7 || selectedButtonId === 8));
-
-                if (item.id === 7) {
-                  // SCROLL RING DUAL BADGE
-                  return (
-                    <div
-                      key={item.id}
-                      className="absolute z-30 smooth-canvas-item pointer-events-auto"
-                      style={{
-                        left: `${lx}px`,
-                        top: `${ly}px`,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                    >
-                      <div className={`bg-slate-900/95 border rounded-xl p-2 text-xs shadow-xl flex flex-col gap-1 min-w-[140px] whitespace-nowrap transition-all ${
-                        isSelected ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-slate-900' : 'border-slate-700/80 hover:border-slate-600'
-                      }`}>
-                        {/* Upper Slot: Button ID 7 (Cyan dot / Clockwise ↻) */}
-                        <button
-                          onClick={() => {
-                            setSelectedButtonId(7);
-                            handleSimulateClick(7);
-                          }}
-                          className={`flex items-center gap-1.5 text-[11px] text-left transition-all ${
-                            selectedButtonId === 7 ? 'text-cyan-300 font-bold' : 'text-slate-200 hover:text-white'
-                          }`}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-cyan-400 shrink-0"></span>
-                          <span className="font-mono text-cyan-400 font-bold text-xs shrink-0" title="時計回り (CW)">↻</span>
-                          <span className="font-semibold">{getButtonMapping(7).description || 'Volume Up'}</span>
-                        </button>
-                        <div className="w-full h-[1px] bg-slate-800"></div>
-                        {/* Lower Slot: Button ID 8 (Indigo dot / Counter-Clockwise ↺) */}
-                        <button
-                          onClick={() => {
-                            setSelectedButtonId(8);
-                            handleSimulateClick(8);
-                          }}
-                          className={`flex items-center gap-1.5 text-[11px] text-left transition-all ${
-                            selectedButtonId === 8 ? 'text-indigo-300 font-bold' : 'text-slate-200 hover:text-white'
-                          }`}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0"></span>
-                          <span className="font-mono text-indigo-400 font-bold text-xs shrink-0" title="反時計回り (CCW)">↺</span>
-                          <span className="font-semibold">{getButtonMapping(8).description || 'Volume Down'}</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                const mapping = getButtonMapping(item.id);
-                const badgeLabel = item.id === 1 ? 'M1' : item.id === 2 ? 'M2' : `0${item.id === 5 ? 3 : item.id === 6 ? 4 : item.id === 3 ? 1 : 2}`;
-
+            {calculatedAnchors.map((item) => {
+              if (item.id === 7) {
+                // SCROLL RING DUAL BADGE
                 return (
                   <div
                     key={item.id}
                     className="absolute z-30 smooth-canvas-item pointer-events-auto"
                     style={{
-                      left: `${lx}px`,
-                      top: `${ly}px`,
+                      left: `${item.lx}px`,
+                      top: `${item.ly}px`,
                       transform: 'translate(-50%, -50%)',
                     }}
                   >
-                    <button
-                      onClick={() => {
-                        setSelectedButtonId(item.id);
-                        handleSimulateClick(item.id);
-                      }}
-                      className={`bg-slate-900/95 border rounded-xl px-3 py-1.5 text-xs shadow-xl transition-all flex items-center gap-2 whitespace-nowrap ${
-                        isSelected
-                          ? 'border-indigo-400 text-white ring-2 ring-indigo-400/50 bg-indigo-950/90 shadow-indigo-500/20 scale-105'
-                          : 'border-slate-700/80 text-slate-200 hover:border-indigo-500/60 hover:text-white'
-                      }`}
-                    >
-                      <span className={`font-mono text-[10px] font-bold px-1 py-0.5 rounded ${
-                        item.id === 1 || item.id === 2 ? 'bg-slate-800 text-slate-300' : 'text-indigo-400 bg-indigo-950/60'
-                      }`}>
-                        {badgeLabel}
-                      </span>
-                      <span className="font-bold">{mapping.description || mapping.name}</span>
-                    </button>
+                    <div className={`bg-slate-900/95 border rounded-xl p-2 text-xs shadow-xl flex flex-col gap-1 min-w-[140px] whitespace-nowrap transition-all ${
+                      item.isSelected ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-slate-900' : 'border-slate-700/80 hover:border-slate-600'
+                    }`}>
+                      {/* Upper Slot: Button ID 7 (Cyan dot / Clockwise ↻) */}
+                      <button
+                        onClick={() => {
+                          setSelectedButtonId(7);
+                          handleSimulateClick(7);
+                        }}
+                        className={`flex items-center gap-1.5 text-[11px] text-left transition-all ${
+                          selectedButtonId === 7 ? 'text-cyan-300 font-bold' : 'text-slate-200 hover:text-white'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 shrink-0"></span>
+                        <span className="font-mono text-cyan-400 font-bold text-xs shrink-0" title="時計回り (CW)">↻</span>
+                        <span className="font-semibold">
+                          {getButtonMapping(7).description || getButtonMapping(7).key_code || '下スクロール'}
+                        </span>
+                      </button>
+                      <div className="w-full h-[1px] bg-slate-800"></div>
+                      {/* Lower Slot: Button ID 8 (Indigo dot / Counter-Clockwise ↺) */}
+                      <button
+                        onClick={() => {
+                          setSelectedButtonId(8);
+                          handleSimulateClick(8);
+                        }}
+                        className={`flex items-center gap-1.5 text-[11px] text-left transition-all ${
+                          selectedButtonId === 8 ? 'text-indigo-300 font-bold' : 'text-slate-200 hover:text-white'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0"></span>
+                        <span className="font-mono text-indigo-400 font-bold text-xs shrink-0" title="反時計回り (CCW)">↺</span>
+                        <span className="font-semibold">
+                          {getButtonMapping(8).description || getButtonMapping(8).key_code || '上にスクロール'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
                 );
-              });
-            })()}
+              }
+
+              const mapping = getButtonMapping(item.id);
+              const badgeLabel = item.id === 1 ? 'M1' : item.id === 2 ? 'M2' : `0${item.id === 5 ? 3 : item.id === 6 ? 4 : item.id === 3 ? 1 : 2}`;
+
+              return (
+                <div
+                  key={item.id}
+                  className="absolute z-30 smooth-canvas-item pointer-events-auto"
+                  style={{
+                    left: `${item.lx}px`,
+                    top: `${item.ly}px`,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setSelectedButtonId(item.id);
+                      handleSimulateClick(item.id);
+                    }}
+                    className={`bg-slate-900/95 border rounded-xl px-3 py-1.5 text-xs shadow-xl transition-all flex items-center gap-2 whitespace-nowrap ${
+                      item.isSelected
+                        ? 'border-indigo-400 text-white ring-2 ring-indigo-400/50 bg-indigo-950/90 shadow-indigo-500/20 scale-105'
+                        : 'border-slate-700/80 text-slate-200 hover:border-indigo-500/60 hover:text-white'
+                    }`}
+                  >
+                    <span className={`font-mono text-[10px] font-bold px-1 py-0.5 rounded ${
+                      item.id === 1 || item.id === 2 ? 'bg-slate-800 text-slate-300' : 'text-indigo-400 bg-indigo-950/60'
+                    }`}>
+                      {badgeLabel}
+                    </span>
+                    <span className="font-bold">{mapping.description || mapping.name}</span>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
-
-
       </div>
     </div>
   );

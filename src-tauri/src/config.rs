@@ -395,9 +395,135 @@ pub fn read_active_pointer_dpi_official(device: &hidapi::HidDevice) -> Option<u1
     None
 }
 
+pub fn get_eeprom_offset_and_row_start_for_layer(layer: u8) -> (u16, usize) {
+    if layer == 0 {
+        (0u16, 7usize)
+    } else {
+        let chunk_idx = ((layer as u16) + 1) / 2;
+        let start_slot = if layer % 2 == 1 { 0usize } else { 7usize };
+        (chunk_idx * 28, start_slot)
+    }
+}
+
+pub fn parse_layer_button_mappings_from_bytes(keycodes: &[u16], layer: u8) -> Option<Vec<ButtonMapping>> {
+    if keycodes.len() < 14 {
+        return None;
+    }
+    let (_, row_start) = get_eeprom_offset_and_row_start_for_layer(layer);
+
+    let get_slot_keycode = |slot_idx: usize, default_code: u16| -> u16 {
+        let target_idx = row_start + slot_idx;
+        let code = keycodes.get(target_idx).copied().unwrap_or(0);
+        if code != 0 {
+            return code;
+        }
+        default_code
+    };
+
+    let mut mappings = Vec::new();
+
+    // Check if default factory 0° upright orientation markers are present on Layer 0
+    let is_factory_0deg_defaults = keycodes.get(9).copied() == Some(0x00D4) && keycodes.get(10).copied() == Some(0x00D5) && layer == 0;
+
+    // Check if default factory uncustomized keymap is present on Layer 4..7
+    let first_code = keycodes.get(row_start).copied().unwrap_or(0);
+    let is_layer4_defaults = layer >= 4 && (first_code == 0x522A || first_code == 0x0000);
+
+    // Button 03 (G3, Top-Left) (Button ID 5) -> Slot 0
+    let g3_c = if is_layer4_defaults { 0x522B } else { get_slot_keycode(0, 0x522B) };
+    let (act5, code5, desc5) = parse_qmk_keycode(g3_c);
+    mappings.push(ButtonMapping { button_id: 5, name: "ボタン 03 (G3)".into(), action_type: act5, key_code: code5, description: desc5 });
+
+    // Button 04 (G4, Top-Right) (Button ID 6) -> Slot 1
+    let g4_c = if is_layer4_defaults { 0x522A } else { get_slot_keycode(1, 0x522A) };
+    let (act6, code6, desc6) = parse_qmk_keycode(g4_c);
+    mappings.push(ButtonMapping { button_id: 6, name: "ボタン 04 (G4)".into(), action_type: act6, key_code: code6, description: desc6 });
+
+    // Button 01 (G1, Bottom-Left) (Button ID 3) -> Slot 2
+    let g1_c = if is_factory_0deg_defaults || is_layer4_defaults { 0x00D2 } else { get_slot_keycode(2, 0x00D2) };
+    let (act3, code3, desc3) = match g1_c {
+        0x00D2 | 0x0002 => ("key".into(), "Browser_Back".into(), "戻る".into()),
+        _ => parse_qmk_keycode(g1_c),
+    };
+    mappings.push(ButtonMapping { button_id: 3, name: "ボタン 01 (G1)".into(), action_type: act3, key_code: code3, description: desc3 });
+
+    // Button 02 (G2, Bottom-Right) (Button ID 4) -> Slot 3
+    let g2_c = if is_factory_0deg_defaults {
+        0x00D1
+    } else if is_layer4_defaults {
+        0x7E2D
+    } else {
+        get_slot_keycode(3, 0x7E2D)
+    };
+    let (act4, code4, desc4) = parse_qmk_keycode(g2_c);
+    mappings.push(ButtonMapping { button_id: 4, name: "ボタン 02 (G2)".into(), action_type: act4, key_code: code4, description: desc4 });
+
+    // Button M1 (Button ID 1) -> Slot 4 (0x0001, 0x00D1, 0x7E29 all represent Left Click)
+    let m1_c = if is_factory_0deg_defaults || is_layer4_defaults { 0x0001 } else { get_slot_keycode(4, 0x0001) };
+    let (act1, code1, desc1) = match m1_c {
+        0x0001 | 0x00D1 | 0x7E29 => ("key".into(), "Click_Left".into(), "左クリック".into()),
+        _ => parse_qmk_keycode(m1_c),
+    };
+    mappings.push(ButtonMapping { button_id: 1, name: "ボタン M1".into(), action_type: act1, key_code: code1, description: desc1 });
+
+    // Button M2 (Button ID 2) -> Slot 5 (0x0002, 0x00D2, 0x7E29 all represent Right Click)
+    let m2_c = if is_factory_0deg_defaults || is_layer4_defaults { 0x0002 } else { get_slot_keycode(5, 0x0002) };
+    let (act2, code2, desc2) = match m2_c {
+        0x0002 | 0x00D2 | 0x7E29 => ("key".into(), "Click_Right".into(), "右クリック".into()),
+        _ => parse_qmk_keycode(m2_c),
+    };
+    mappings.push(ButtonMapping { button_id: 2, name: "ボタン M2".into(), action_type: act2, key_code: code2, description: desc2 });
+
+    // Scroll Ring / Jog Dial (Button ID 7: 時計回り CW / Button ID 8: 反時計回り CCW) -> Slot 6
+    let ring_c = if is_layer4_defaults { 0x7E2B } else { get_slot_keycode(6, 0x522B) };
+    let (act7, code7, desc7, act8, code8, desc8) = match ring_c {
+        0x7E2B => (
+            "media".into(), "Vol_Up".into(), "Volume Up".into(),
+            "media".into(), "Vol_Down".into(), "Volume Down".into(),
+        ),
+        0x522B => {
+            if layer == 2 {
+                (
+                    "octashift".into(), "G(KC_PPLS)".into(), "G(KC_PPLS)".into(),
+                    "octashift".into(), "G(KC_PMNS)".into(), "G(KC_PMNS)".into(),
+                )
+            } else if layer == 3 {
+                (
+                    "octashift".into(), "C(KC_PPLS)".into(), "C(KC_PPLS)".into(),
+                    "octashift".into(), "C(KC_PMNS)".into(), "C(KC_PMNS)".into(),
+                )
+            } else {
+                (
+                    "key".into(), "Scroll_Down".into(), "下スクロール".into(),
+                    "key".into(), "Scroll_Up".into(), "上にスクロール".into(),
+                )
+            }
+        }
+        _ => {
+            let (a7, c7, d7) = parse_qmk_keycode(ring_c);
+            let (a8, c8, d8) = match ring_c {
+                // Cmd/Ctrl/Shift + (= / 0x2E) -> pair with - / 0x2D
+                0x082E | 0x012E | 0x022E | 0x042E => parse_qmk_keycode(ring_c - 1),
+                // Cmd/Ctrl/Shift - (- / 0x2D) -> pair with = / 0x2E
+                0x082D | 0x012D | 0x022D | 0x042D => parse_qmk_keycode(ring_c + 1),
+                // Cmd/Ctrl/Shift Keypad + (0x57) -> pair with Keypad - (0x56)
+                0x0857 | 0x0157 | 0x0257 | 0x0457 => parse_qmk_keycode(ring_c - 1),
+                // Cmd/Ctrl/Shift Keypad - (0x56) -> pair with Keypad + (0x57)
+                0x0856 | 0x0156 | 0x0256 | 0x0456 => parse_qmk_keycode(ring_c + 1),
+                _ => parse_qmk_keycode(ring_c),
+            };
+            (a7, c7, d7, a8, c8, d8)
+        }
+    };
+    mappings.push(ButtonMapping { button_id: 7, name: "スクロールリング (時計回り ↻)".into(), action_type: act7, key_code: code7, description: desc7 });
+    mappings.push(ButtonMapping { button_id: 8, name: "スクロールリング (反時計回り ↺)".into(), action_type: act8, key_code: code8, description: desc8 });
+
+    Some(mappings)
+}
+
 pub fn read_layer_button_mappings(device: &hidapi::HidDevice, layer: u8) -> Option<Vec<ButtonMapping>> {
-    // 14 keycodes = 28 bytes per layer (contiguous EEPROM storage)
-    let offset_bytes = (layer as u16) * 28;
+    let (offset_bytes, _) = get_eeprom_offset_and_row_start_for_layer(layer);
+
     let mut req_map = [0u8; 33];
     req_map[0] = 0x00;
     req_map[1] = 0x12; // DYNAMIC_KEYMAP_GET_BUFFER
@@ -426,137 +552,14 @@ pub fn read_layer_button_mappings(device: &hidapi::HidDevice, layer: u8) -> Opti
                     }
                 }
 
-                if keycodes.len() >= 14 {
-                    let mut mappings = Vec::new();
-
-                    let pick_valid_keycode = |wired_idx: usize, wireless_idx: usize, default_code: u16| -> u16 {
-                        if wired_idx < keycodes.len() {
-                            let c = keycodes[wired_idx];
-                            if c != 0 && c != 0x7E29 {
-                                return c;
-                            }
-                        }
-                        if wireless_idx < keycodes.len() {
-                            let c = keycodes[wireless_idx];
-                            if c != 0 && c != 0x7E29 {
-                                return c;
-                            }
-                        }
-                        if wired_idx < keycodes.len() && keycodes[wired_idx] != 0 {
-                            return keycodes[wired_idx];
-                        }
-                        if wireless_idx < keycodes.len() && keycodes[wireless_idx] != 0 {
-                            return keycodes[wireless_idx];
-                        }
-                        default_code
-                    };
-
-                    // Button M1 (Left click main button)
-                    let raw_m1 = pick_valid_keycode(11, 4, 0x0001);
-                    let m1_c = match raw_m1 {
-                        0x00D1 | 0x522B | 0x7E29 | 0x0000 => 0x0001, // Left Click / 左クリック
-                        _ => raw_m1,
-                    };
-                    let (act1, code1, desc1) = parse_qmk_keycode(m1_c);
-                    mappings.push(ButtonMapping { button_id: 1, name: "ボタン M1".into(), action_type: act1, key_code: code1, description: desc1 });
-
-                    // Button M2 (Right click main button)
-                    let raw_m2 = pick_valid_keycode(12, 5, 0x0002);
-                    let m2_c = match raw_m2 {
-                        0x00D2 | 0x522A | 0x7E29 | 0x0000 => 0x0002, // Right Click / 右クリック
-                        _ => raw_m2,
-                    };
-                    let (act2, code2, desc2) = parse_qmk_keycode(m2_c);
-                    mappings.push(ButtonMapping { button_id: 2, name: "ボタン M2".into(), action_type: act2, key_code: code2, description: desc2 });
-
-                    // Determine layer mode: Factory Default vs 90° Custom vs 0° Custom
-                    let is_wireless_default = (keycodes[0] == 0x522A || keycodes[0] == 0x522B) && keycodes[1] == 0x7E2B && (keycodes[2] == 0x00D4 || keycodes[2] == 0x00D2) && keycodes[3] == 0x7E2C;
-                    let is_wired_default = (keycodes[7] == 0x522A || keycodes[7] == 0x522B) && keycodes[8] == 0x7E2B && (keycodes[9] == 0x00D4 || keycodes[9] == 0x00D2) && keycodes[10] == 0x7E2C;
-                    let is_all_zeros = keycodes.iter().all(|&c| c == 0);
-                    let is_wired_zeros = keycodes[7..14].iter().all(|&c| c == 0);
-
-                    let is_factory_default = is_all_zeros || (is_wired_zeros && (is_wireless_default || keycodes[0] == 0x522A)) || is_wired_default;
-                    let is_90_degree_custom = keycodes[8] == 0x00D5 && keycodes[10] == 0x00D4;
-
-                    let (g1_c, g2_c, g3_c, g4_c) = if is_factory_default {
-                        // Factory Default Uncustomized Layer (Layer 1..7)
-                        (0x00D2, 0x7E2D, 0x522B, 0x522A)
-                    } else if is_90_degree_custom {
-                        // 90° OctaShift Custom Orientation Mode
-                        let c_01 = keycodes[8];  // 英数 (0x00D5)
-                        let c_03 = keycodes[10]; // かな (0x00D4)
-                        let c_04 = if keycodes[11] != 0 && keycodes[11] != 0x7E29 { keycodes[11] } else { 0x00D1 }; // 進む
-                        let c_02 = if keycodes[12] != 0 && keycodes[12] != 0x7E29 { keycodes[12] } else { 0x00D2 }; // 戻る
-                        (c_01, c_02, c_03, c_04)
-                    } else {
-                        // 0° Standard Upright Custom Orientation Mode (e.g. Layer 0)
-                        let c_01 = pick_valid_keycode(9, 2, 0x00D2);
-                        let c_02 = pick_valid_keycode(10, 3, 0x7E2D);
-                        let c_03 = pick_valid_keycode(7, 0, 0x522B);
-                        let c_04 = pick_valid_keycode(8, 1, 0x522A);
-                        (c_01, c_02, c_03, c_04)
-                    };
-
-                    let (act3, code3, desc3) = parse_qmk_keycode(g1_c);
-                    mappings.push(ButtonMapping { button_id: 3, name: "ボタン 01 (G1)".into(), action_type: act3, key_code: code3, description: desc3 });
-
-                    let (act4, code4, desc4) = parse_qmk_keycode(g2_c);
-                    mappings.push(ButtonMapping { button_id: 4, name: "ボタン 02 (G2)".into(), action_type: act4, key_code: code4, description: desc4 });
-
-                    let (act5, code5, desc5) = parse_qmk_keycode(g3_c);
-                    mappings.push(ButtonMapping { button_id: 5, name: "ボタン 03 (G3)".into(), action_type: act5, key_code: code5, description: desc5 });
-
-                    let (act6, code6, desc6) = parse_qmk_keycode(g4_c);
-                    mappings.push(ButtonMapping { button_id: 6, name: "ボタン 04 (G4)".into(), action_type: act6, key_code: code6, description: desc6 });
-
-                    // Scroll Ring Top (id 7) & Bottom (id 8) Slots
-                    let raw_ring_top = if keycodes[8] == 0x7E2B || keycodes[8] == 0x7E2C {
-                        keycodes[8]
-                    } else if keycodes[1] == 0x7E2B || keycodes[1] == 0x7E2C {
-                        keycodes[1]
-                    } else if keycodes[13] == 0x522B {
-                        0x522B
-                    } else if keycodes[13] != 0 && keycodes[13] != 0x7E29 {
-                        keycodes[13]
-                    } else {
-                        0x7E2B // Default Volume Up
-                    };
-
-                    let raw_ring_bottom = if keycodes[10] == 0x7E2C || keycodes[10] == 0x7E2B {
-                        keycodes[10]
-                    } else if keycodes[3] == 0x7E2C || keycodes[3] == 0x7E2B {
-                        keycodes[3]
-                    } else if keycodes[10] != 0 && keycodes[10] != 0x7E29 {
-                        keycodes[10]
-                    } else {
-                        0x7E2C // Default Volume Down
-                    };
-
-                    let (act7, code7, desc7, act8, code8, desc8) = match (raw_ring_top, raw_ring_bottom) {
-                        (0x7E2B, 0x7E2C) | (0x7E2B, _) | (_, 0x7E2C) => (
-                            "media".into(), "Vol_Up".into(), "Volume Up".into(),
-                            "media".into(), "Vol_Down".into(), "Volume Down".into(),
-                        ),
-                        (0x522B, _) => (
-                            "key".into(), "Scroll_Down".into(), "下スクロール".into(),
-                            "key".into(), "Scroll_Up".into(), "上にスクロール".into(),
-                        ),
-                        _ => {
-                            let (a7, c7, d7) = parse_qmk_keycode(raw_ring_top);
-                            let (a8, c8, d8) = parse_qmk_keycode(raw_ring_bottom);
-                            (a7, c7, d7, a8, c8, d8)
-                        }
-                    };
-                    mappings.push(ButtonMapping { button_id: 7, name: "スクロールリング (時計回り ↻)".into(), action_type: act7, key_code: code7, description: desc7 });
-                    mappings.push(ButtonMapping { button_id: 8, name: "スクロールリング (反時計回り ↺)".into(), action_type: act8, key_code: code8, description: desc8 });
-
-                    return Some(mappings);
-                }
+                return parse_layer_button_mappings_from_bytes(&keycodes, layer);
             }
         }
     }
     None
 }
+
+
 
 pub fn create_default_device(
     id: &str,
@@ -716,6 +719,22 @@ pub fn parse_qmk_keycode(code: u16) -> (String, String, String) {
         0x50 => "KC_LEFT",
         0x51 => "KC_DOWN",
         0x52 => "KC_UP",
+        0x54 => "KC_PSLS",
+        0x55 => "KC_PAST",
+        0x56 => "KC_PMNS",
+        0x57 => "KC_PPLS",
+        0x58 => "KC_PENT",
+        0x59 => "KC_P1",
+        0x5A => "KC_P2",
+        0x5B => "KC_P3",
+        0x5C => "KC_P4",
+        0x5D => "KC_P5",
+        0x5E => "KC_P6",
+        0x5F => "KC_P7",
+        0x60 => "KC_P8",
+        0x61 => "KC_P9",
+        0x62 => "KC_P0",
+        0x63 => "KC_PDOT",
         _ => "",
     };
 
@@ -753,6 +772,22 @@ pub fn parse_qmk_keycode(code: u16) -> (String, String, String) {
         0x50 => "←",
         0x51 => "↓",
         0x52 => "↑",
+        0x54 => "Keypad /",
+        0x55 => "Keypad *",
+        0x56 => "Keypad -",
+        0x57 => "Keypad +",
+        0x58 => "Keypad Enter",
+        0x59 => "Keypad 1",
+        0x5A => "Keypad 2",
+        0x5B => "Keypad 3",
+        0x5C => "Keypad 4",
+        0x5D => "Keypad 5",
+        0x5E => "Keypad 6",
+        0x5F => "Keypad 7",
+        0x60 => "Keypad 8",
+        0x61 => "Keypad 9",
+        0x62 => "Keypad 0",
+        0x63 => "Keypad .",
         _ => "",
     };
 
@@ -763,21 +798,18 @@ pub fn parse_qmk_keycode(code: u16) -> (String, String, String) {
         let is_ctrl = (mod_byte & 0x01) != 0 || (mod_byte & 0x10) != 0;
 
         let qmk_prefix = match (is_ctrl, is_shift, is_alt, is_gui) {
-            (false, false, true, true) => "LAG",
-            (false, true, false, true) => "LSG",
+            (true, false, false, false) => "C",
+            (false, true, false, false) => "S",
+            (false, false, true, false) => "A",
             (false, false, false, true) => "G",
-            (true, true, true, true) => "HYPR",
+            (true, true, false, false) => "C(S",
+            (true, false, true, false) => "C(A",
+            (true, false, false, true) => "C(G",
+            (false, true, true, false) => "S(A",
+            (false, true, false, true) => "S(G",
+            (false, false, true, true) => "A(G",
             (true, true, true, false) => "MEH",
-            (true, false, false, false) => "LCTL",
-            (false, true, false, false) => "LSFT",
-            (false, false, true, false) => "LALT",
-            (true, false, false, true) => "LCG",
-            (true, true, false, false) => "LCS",
-            (true, false, true, false) => "LCA",
-            (false, true, true, false) => "LSA",
-            (false, true, true, true) => "LSAG",
-            (true, true, false, true) => "LCSG",
-            (true, false, true, true) => "LCAG",
+            (true, true, true, true) => "HYPR",
             _ => "",
         };
 
@@ -790,7 +822,11 @@ pub fn parse_qmk_keycode(code: u16) -> (String, String, String) {
         let desc = format!("{} + {}", mods.join(" + "), basic_friendly);
 
         if !qmk_prefix.is_empty() {
-            let kc = format!("{}({})", qmk_prefix, basic_name);
+            let kc = if qmk_prefix.contains('(') {
+                format!("{}({}))", qmk_prefix, basic_name)
+            } else {
+                format!("{}({})", qmk_prefix, basic_name)
+            };
             return ("key".into(), kc, desc);
         } else {
             let kc = format!("{}+{}", mods.join("+"), basic_name);
@@ -807,14 +843,16 @@ pub fn parse_qmk_keycode(code: u16) -> (String, String, String) {
 
 pub fn is_target_nape_device(dev_info: &hidapi::DeviceInfo) -> bool {
     let vid = dev_info.vendor_id();
+    let pid = dev_info.product_id();
     let prod = dev_info.product_string().unwrap_or("").to_lowercase();
 
-    // Keychron Vendor ID (0x3434) or product string containing nape/keychron
-    // AND must strictly target VIA Raw HID endpoint (usage_page 0xff60, usage 0x0061)
-    let is_nape_match = vid == 0x3434 || prod.contains("nape") || prod.contains("keychron");
+    // Must be Keychron Vendor (0x3434) AND specifically Nape Pro (PID 0x0440 OR product string containing "nape")
+    // Strictly prevents matching other Keychron keyboards (e.g. Keychron Q8, Q1, K2, etc.)
+    let is_keychron = vid == 0x3434 || prod.contains("keychron");
+    let is_nape_product = pid == 0x0440 || prod.contains("nape");
     let is_raw_hid = dev_info.usage_page() == 0xff60 && dev_info.usage() == 0x0061;
 
-    is_nape_match && is_raw_hid
+    is_keychron && is_nape_product && is_raw_hid
 }
 
 pub fn scan_hid_devices(config: &mut AppConfig) -> bool {
@@ -828,18 +866,28 @@ pub fn scan_hid_devices(config: &mut AppConfig) -> bool {
                     config.device.is_connected = true;
 
                     let raw_product = dev_info.product_string().unwrap_or("Keychron Nape Pro").to_string();
-                    if !raw_product.is_empty() {
-                        config.device.name = raw_product;
-                    }
+                    let prod_lower = raw_product.to_lowercase();
+                    let interface_type = if prod_lower.contains("2.4g") || prod_lower.contains("receiver") || prod_lower.contains("dongle") {
+                        "2.4GHz Wireless Mode".to_string()
+                    } else if prod_lower.contains("bt") || prod_lower.contains("bluetooth") {
+                        "Bluetooth Mode".to_string()
+                    } else {
+                        "USB Mode".to_string()
+                    };
 
-                    let is_empty_mappings = config.device.button_mappings.is_empty() || config.device.button_mappings.values().all(|v| v.is_empty());
-                    if is_empty_mappings {
-                        for layer in 0..8u8 {
-                            if let Some(mappings) = read_layer_button_mappings(&device, layer) {
-                                config.device.button_mappings.insert(layer, mappings);
-                            }
-                            std::thread::sleep(std::time::Duration::from_millis(10));
+                    config.device.name = "Keychron Nape Pro".to_string();
+                    config.device.interface_type = interface_type;
+
+                    // Always refresh layer mappings from physical hardware on connection
+                    let mut hw_mappings: HashMap<u8, Vec<ButtonMapping>> = HashMap::new();
+                    for layer in 0..8u8 {
+                        if let Some(mappings) = read_layer_button_mappings(&device, layer) {
+                            hw_mappings.insert(layer, mappings);
                         }
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    if !hw_mappings.is_empty() {
+                        config.device.button_mappings = hw_mappings;
                     }
 
                     if let Some(hl) = read_active_layer_official(&device) {
@@ -976,42 +1024,138 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_dump_eeprom_stride32() {
-        if let Ok(api) = hidapi::HidApi::new() {
-            for dev_info in api.device_list() {
-                let vid = dev_info.vendor_id();
-                let pid = dev_info.product_id();
-                if is_target_nape_device(dev_info) {
-                        if let Ok(device) = dev_info.open_device(&api) {
-                            println!("\n=== CONTINUOUS EEPROM DUMP (OFFSETS 0..280, 28 BYTES PER CHUNK) ===");
-                            for idx in 0..10 {
-                                let offset = (idx as u16) * 28;
-                                let mut req = [0u8; 33];
-                                req[0] = 0x00;
-                                req[1] = 0x12;
-                                req[2] = ((offset >> 8) & 0xFF) as u8;
-                                req[3] = (offset & 0xFF) as u8;
-                                req[4] = 28;
+    fn test_layer_eeprom_offsets() {
+        assert_eq!(get_eeprom_offset_and_row_start_for_layer(0), (0, 7));
+        assert_eq!(get_eeprom_offset_and_row_start_for_layer(1), (28, 0));
+        assert_eq!(get_eeprom_offset_and_row_start_for_layer(2), (28, 7));
+        assert_eq!(get_eeprom_offset_and_row_start_for_layer(3), (56, 0));
+        assert_eq!(get_eeprom_offset_and_row_start_for_layer(4), (56, 7));
+        assert_eq!(get_eeprom_offset_and_row_start_for_layer(5), (84, 0));
+        assert_eq!(get_eeprom_offset_and_row_start_for_layer(6), (84, 7));
+        assert_eq!(get_eeprom_offset_and_row_start_for_layer(7), (112, 0));
+    }
 
-                                if device.write(&req).is_ok() {
-                                    let mut buf = [0u8; 64];
-                                    if let Ok(n) = device.read_timeout(&mut buf, 200) {
-                                        let data_idx = if n > 32 { 5 } else { 4 };
-                                        let slice = &buf[data_idx..n.min(data_idx + 28)];
-                                        let mut kcs = Vec::new();
-                                        for i in (0..slice.len()).step_by(2) {
-                                            if i + 1 < slice.len() {
-                                                let c = u16::from_be_bytes([slice[i], slice[i + 1]]);
-                                                kcs.push(format!("0x{:04X}", c));
-                                            }
-                                        }
-                                        println!("Chunk {:2} (offset={:3}): {:?}", idx, offset, kcs);
-                                    }
-                                }
-                        }
-                    }
-                }
-            }
-        }
+    #[test]
+    fn test_layer_0_eeprom_dummy_parsing() {
+        // Chunk 0 (28 bytes = 14 u16 keycodes)
+        let chunk0: Vec<u16> = vec![
+            0x522A, 0x0000, 0x00D4, 0x0000, 0x00D1, 0x00D2, 0x522B, // Row 0
+            0x032B, 0x012B, 0x00D4, 0x00D5, 0x00D1, 0x00D2, 0x522B, // Row 1 (Layer 0)
+        ];
+        let mappings = parse_layer_button_mappings_from_bytes(&chunk0, 0).expect("Layer 0 mapping failed");
+        
+        let m1 = mappings.iter().find(|m| m.button_id == 1).unwrap();
+        assert_eq!(m1.description, "左クリック");
+
+        let m2 = mappings.iter().find(|m| m.button_id == 2).unwrap();
+        assert_eq!(m2.description, "右クリック");
+
+        let ring_cw = mappings.iter().find(|m| m.button_id == 7).unwrap();
+        assert_eq!(ring_cw.description, "下スクロール");
+
+        let ring_ccw = mappings.iter().find(|m| m.button_id == 8).unwrap();
+        assert_eq!(ring_ccw.description, "上にスクロール");
+    }
+
+    #[test]
+    fn test_layer_1_eeprom_dummy_parsing() {
+        // Chunk 1 (28 bytes) -> Layer 1 uses Row 0 (indices 0..6)
+        let chunk1: Vec<u16> = vec![
+            0x0A50, 0x0A4F, 0x0828, 0x0A28, 0x00D1, 0x00D2, 0x522B, // Row 0 (Layer 1)
+            0x081D, 0x0A1D, 0x0A13, 0x0A08, 0x00D1, 0x00D2, 0x522B, // Row 1 (Layer 2)
+        ];
+        let mappings = parse_layer_button_mappings_from_bytes(&chunk1, 1).expect("Layer 1 mapping failed");
+
+        let g3 = mappings.iter().find(|m| m.button_id == 5).unwrap();
+        assert!(g3.description.contains("Cmd") || g3.description.contains("Win"));
+
+        let m1 = mappings.iter().find(|m| m.button_id == 1).unwrap();
+        assert_eq!(m1.description, "左クリック");
+    }
+
+    #[test]
+    fn test_layer_2_eeprom_dummy_parsing() {
+        // Chunk 1 (28 bytes) -> Layer 2 uses Row 1 (indices 7..13)
+        let chunk1: Vec<u16> = vec![
+            0x0A50, 0x0A4F, 0x0828, 0x0A28, 0x00D1, 0x00D2, 0x522B, // Row 0 (Layer 1)
+            0x081D, 0x0A1D, 0x0A13, 0x0A08, 0x00D1, 0x00D2, 0x522B, // Row 1 (Layer 2)
+        ];
+        let mappings = parse_layer_button_mappings_from_bytes(&chunk1, 2).expect("Layer 2 mapping failed");
+
+        let g3 = mappings.iter().find(|m| m.button_id == 5).unwrap();
+        assert_eq!(g3.key_code, "G(KC_Z)");
+
+        let ring_cw = mappings.iter().find(|m| m.button_id == 7).unwrap();
+        assert_eq!(ring_cw.key_code, "G(KC_PPLS)");
+
+        let ring_ccw = mappings.iter().find(|m| m.button_id == 8).unwrap();
+        assert_eq!(ring_ccw.key_code, "G(KC_PMNS)");
+    }
+
+    #[test]
+    fn test_layer_3_eeprom_dummy_parsing() {
+        // Chunk 2 (28 bytes) -> Layer 3 uses Row 0 (indices 0..6)
+        let chunk2: Vec<u16> = vec![
+            0x011D, 0x031D, 0x0113, 0x0108, 0x00D1, 0x00D2, 0x522B, // Row 0 (Layer 3: C(KC_Z), C(S(KC_Z)), C(KC_P), C(KC_E))
+            0x522A, 0x7E2B, 0x00D4, 0x7E2C, 0x00D1, 0x00D2, 0x522B, // Row 1 (Layer 4)
+        ];
+        let mappings = parse_layer_button_mappings_from_bytes(&chunk2, 3).expect("Layer 3 mapping failed");
+
+        let g3 = mappings.iter().find(|m| m.button_id == 5).unwrap();
+        assert_eq!(g3.key_code, "C(KC_Z)");
+
+        let g4 = mappings.iter().find(|m| m.button_id == 6).unwrap();
+        assert_eq!(g4.key_code, "C(S(KC_Z))");
+
+        let ring_cw = mappings.iter().find(|m| m.button_id == 7).unwrap();
+        assert_eq!(ring_cw.key_code, "C(KC_PPLS)");
+
+        let ring_ccw = mappings.iter().find(|m| m.button_id == 8).unwrap();
+        assert_eq!(ring_ccw.key_code, "C(KC_PMNS)");
+    }
+
+    #[test]
+    fn test_layer_4_defaults_parsing() {
+        // Chunk 2 (28 bytes) -> Layer 4 uses Row 1 (indices 7..13)
+        let chunk2: Vec<u16> = vec![
+            0x011D, 0x031D, 0x0113, 0x0108, 0x00D1, 0x00D2, 0x522B, // Row 0 (Layer 3)
+            0x522A, 0x7E2B, 0x00D4, 0x7E2C, 0x00D1, 0x00D2, 0x522B, // Row 1 (Layer 4 defaults)
+        ];
+        let mappings = parse_layer_button_mappings_from_bytes(&chunk2, 4).expect("Layer 4 mapping failed");
+
+        let g3 = mappings.iter().find(|m| m.button_id == 5).unwrap();
+        assert_eq!(g3.description, "ボールスクロール");
+
+        let g4 = mappings.iter().find(|m| m.button_id == 6).unwrap();
+        assert_eq!(g4.description, "8方向を切り替え");
+
+        let g1 = mappings.iter().find(|m| m.button_id == 3).unwrap();
+        assert_eq!(g1.description, "戻る");
+
+        let g2 = mappings.iter().find(|m| m.button_id == 4).unwrap();
+        assert_eq!(g2.description, "Cycle DPI");
+
+        let ring_cw = mappings.iter().find(|m| m.button_id == 7).unwrap();
+        assert_eq!(ring_cw.description, "Volume Up");
+
+        let ring_ccw = mappings.iter().find(|m| m.button_id == 8).unwrap();
+        assert_eq!(ring_ccw.description, "Volume Down");
+    }
+
+    #[test]
+    fn test_qmk_keycode_keypad_and_modifiers() {
+        let (act, code, desc) = parse_qmk_keycode(0x0157); // Ctrl + KC_PPLS
+        assert_eq!(act, "key");
+        assert_eq!(code, "C(KC_PPLS)");
+        assert_eq!(desc, "Ctrl + Keypad +");
+
+        let (_, code_minus, _) = parse_qmk_keycode(0x0156); // Ctrl + KC_PMNS
+        assert_eq!(code_minus, "C(KC_PMNS)");
+
+        let (_, code_cmd_plus, _) = parse_qmk_keycode(0x0857); // Cmd + KC_PPLS
+        assert_eq!(code_cmd_plus, "G(KC_PPLS)");
+
+        let (_, code_csz, _) = parse_qmk_keycode(0x031D); // Ctrl + Shift + Z
+        assert_eq!(code_csz, "C(S(KC_Z))");
     }
 }

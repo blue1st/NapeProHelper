@@ -90,19 +90,35 @@ fn main() {
                 query_command(&device, "0xA7 Sub 0x24 (Get DPI)", 0xA7, Some(0x24));
                 query_command(&device, "0xA7 Sub 0x2C (Get Profile)", 0xA7, Some(0x2C));
 
-                // VIA EEPROM Offset 0..32
-                println!("\n--- EEPROM Sample (Offset 0..28) ---");
-                let mut req = [0u8; 33];
-                req[0] = 0x00;
-                req[1] = 0x12; // DYNAMIC_KEYMAP_GET_BUFFER
-                req[2] = 0x00;
-                req[3] = 0x00;
-                req[4] = 28;
-                if device.write(&req).is_ok() {
-                    sleep(Duration::from_millis(30));
-                    let mut buf = [0u8; 64];
-                    if let Ok(n) = device.read_timeout(&mut buf, 200) {
-                        print_hex_and_ascii("EEPROM Layer 0 Head", &buf[..n.min(32)]);
+                // Full EEPROM Scan (Offsets 0..1024)
+                println!("\n--- FULL EEPROM SCAN (Offsets 0..1024) ---");
+                for offset in (0..1024).step_by(28) {
+                    let mut req = [0u8; 33];
+                    req[0] = 0x00;
+                    req[1] = 0x12; // DYNAMIC_KEYMAP_GET_BUFFER
+                    req[2] = ((offset >> 8) & 0xFF) as u8;
+                    req[3] = (offset & 0xFF) as u8;
+                    req[4] = 28;
+                    if device.write(&req).is_ok() {
+                        sleep(Duration::from_millis(15));
+                        let mut buf = [0u8; 64];
+                        if let Ok(n) = device.read_timeout(&mut buf, 200) {
+                            let start_idx = if n >= 4 && buf[0] == 0x12 { 0 } else if n >= 5 && buf[1] == 0x12 { 1 } else { 999 };
+                            if start_idx != 999 {
+                                let data_idx = start_idx + 4;
+                                let mut keycodes: Vec<u16> = Vec::new();
+                                for i in (data_idx..n.min(data_idx + 28)).step_by(2) {
+                                    if i + 1 < n {
+                                        let code = u16::from_be_bytes([buf[i], buf[i + 1]]);
+                                        keycodes.push(code);
+                                    }
+                                }
+                                if keycodes.iter().any(|&c| c != 0) {
+                                    let hex_codes: Vec<String> = keycodes.iter().map(|k| format!("0x{:04X}", k)).collect();
+                                    println!("Offset {:4}: [{}]", offset, hex_codes.join(", "));
+                                }
+                            }
+                        }
                     }
                 }
                 println!("\n");
@@ -120,3 +136,4 @@ fn main() {
         println!("Inspection completed. Total devices found: {}", found_count);
     }
 }
+

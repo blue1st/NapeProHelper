@@ -89,20 +89,24 @@ export const AboutApp: React.FC<AboutAppProps> = ({ onUpdateDetected }) => {
     if (!force) {
       try {
         const cachedTime = localStorage.getItem(CACHE_KEY_TIME);
-        const cachedStatus = localStorage.getItem(CACHE_KEY_STATUS);
         const cachedReleaseStr = localStorage.getItem(CACHE_KEY_RELEASE);
 
-        if (cachedTime && cachedStatus) {
+        if (cachedTime && cachedReleaseStr) {
           const lastTime = parseInt(cachedTime, 10);
           if (Date.now() - lastTime < ONE_DAY_MS) {
-            const cachedRelease = cachedReleaseStr ? JSON.parse(cachedReleaseStr) : null;
-            setStatus(cachedStatus as any);
-            setLatestRelease(cachedRelease);
-            setLastCheckedAt(new Date(lastTime));
-            if (cachedStatus === 'update-available' && cachedRelease && onUpdateDetected) {
-              onUpdateDetected(cachedRelease);
+            const cachedRelease: ReleaseInfo | null = JSON.parse(cachedReleaseStr);
+            if (cachedRelease && cachedRelease.version) {
+              const isNewer = compareSemver(appVersion, cachedRelease.version) > 0;
+              const actualStatus = isNewer ? 'update-available' : 'up-to-date';
+              setStatus(actualStatus);
+              setLatestRelease(cachedRelease);
+              setLastCheckedAt(new Date(lastTime));
+              if (isNewer && onUpdateDetected) {
+                onUpdateDetected(cachedRelease);
+              }
+              localStorage.setItem(CACHE_KEY_STATUS, actualStatus);
+              return;
             }
-            return;
           }
         }
       } catch {
