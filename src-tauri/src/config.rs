@@ -857,63 +857,92 @@ pub fn is_target_nape_device(dev_info: &hidapi::DeviceInfo) -> bool {
     is_keychron && is_nape_product && is_raw_hid
 }
 
+pub fn is_device_present_passive(api: &hidapi::HidApi) -> bool {
+    for dev_info in api.device_list() {
+        if is_target_nape_device(dev_info) {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn scan_hid_devices(config: &mut AppConfig) -> bool {
+    let api = match hidapi::HidApi::new() {
+        Ok(a) => a,
+        Err(_) => {
+            config.device.is_connected = false;
+            return false;
+        }
+    };
+
+    let is_present = is_device_present_passive(&api);
+
+    // If device was already connected and is still present in OS USB tree,
+    // return true passively without opening the device or sending heavy EEPROM requests over USB.
+    if config.device.is_connected && is_present {
+        return true;
+    }
+
+    if !is_present {
+        config.device.is_connected = false;
+        return false;
+    }
+
+    // Only on initial connection or after re-connecting:
+    // Open device ONCE to fetch product info, EEPROM layer mappings, angle, and DPI.
     let mut nape_found = false;
+    for dev_info in api.device_list() {
+        if is_target_nape_device(dev_info) {
+            if let Ok(device) = dev_info.open_device(&api) {
+                nape_found = true;
+                config.device.is_connected = true;
 
-    if let Ok(api) = hidapi::HidApi::new() {
-        for dev_info in api.device_list() {
-            if is_target_nape_device(dev_info) {
-                if let Ok(device) = dev_info.open_device(&api) {
-                    nape_found = true;
-                    config.device.is_connected = true;
+                let raw_product = dev_info.product_string().unwrap_or("Keychron Nape Pro").to_string();
+                let prod_lower = raw_product.to_lowercase();
+                let interface_type = if prod_lower.contains("2.4g") || prod_lower.contains("receiver") || prod_lower.contains("dongle") {
+                    "2.4GHz Wireless Mode".to_string()
+                } else if prod_lower.contains("bt") || prod_lower.contains("bluetooth") {
+                    "Bluetooth Mode".to_string()
+                } else {
+                    "USB Mode".to_string()
+                };
 
-                    let raw_product = dev_info.product_string().unwrap_or("Keychron Nape Pro").to_string();
-                    let prod_lower = raw_product.to_lowercase();
-                    let interface_type = if prod_lower.contains("2.4g") || prod_lower.contains("receiver") || prod_lower.contains("dongle") {
-                        "2.4GHz Wireless Mode".to_string()
-                    } else if prod_lower.contains("bt") || prod_lower.contains("bluetooth") {
-                        "Bluetooth Mode".to_string()
-                    } else {
-                        "USB Mode".to_string()
-                    };
+                config.device.name = "Keychron Nape Pro".to_string();
+                config.device.interface_type = interface_type;
 
-                    config.device.name = "Keychron Nape Pro".to_string();
-                    config.device.interface_type = interface_type;
-
-                    // Always refresh layer mappings from physical hardware on connection
-                    let mut hw_mappings: HashMap<u8, Vec<ButtonMapping>> = HashMap::new();
-                    for layer in 0..8u8 {
-                        if let Some(mappings) = read_layer_button_mappings(&device, layer) {
-                            hw_mappings.insert(layer, mappings);
-                        }
-                        std::thread::sleep(std::time::Duration::from_millis(5));
-                    }
-                    if !hw_mappings.is_empty() {
-                        config.device.button_mappings = hw_mappings;
-                    }
-
-                    if let Some(hl) = read_active_layer_official(&device) {
-                        config.device.active_layer = hl;
+                // Refresh layer mappings from physical hardware on connection
+                let mut hw_mappings: HashMap<u8, Vec<ButtonMapping>> = HashMap::new();
+                for layer in 0..8u8 {
+                    if let Some(mappings) = read_layer_button_mappings(&device, layer) {
+                        hw_mappings.insert(layer, mappings);
                     }
                     std::thread::sleep(std::time::Duration::from_millis(5));
-
-                    if let Some(ang) = read_octashift_angle_official(&device, config.device.active_layer) {
-                        let active_l = config.device.active_layer;
-                        let saved_angle = config.device.layer_octashift_angles.get(&active_l).copied();
-                        if let Some(s_ang) = saved_angle {
-                            config.device.octashift_angle = s_ang;
-                        } else {
-                            config.device.octashift_angle = ang;
-                            config.device.layer_octashift_angles.insert(active_l, ang);
-                        }
-                    }
-
-                    if let Some(dpi) = read_active_pointer_dpi_official(&device) {
-                        config.device.pointer_dpi = dpi;
-                    }
-
-                    break; // Connect to the first active Nape Pro
                 }
+                if !hw_mappings.is_empty() {
+                    config.device.button_mappings = hw_mappings;
+                }
+
+                if let Some(hl) = read_active_layer_official(&device) {
+                    config.device.active_layer = hl;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+
+                if let Some(ang) = read_octashift_angle_official(&device, config.device.active_layer) {
+                    let active_l = config.device.active_layer;
+                    let saved_angle = config.device.layer_octashift_angles.get(&active_l).copied();
+                    if let Some(s_ang) = saved_angle {
+                        config.device.octashift_angle = s_ang;
+                    } else {
+                        config.device.octashift_angle = ang;
+                        config.device.layer_octashift_angles.insert(active_l, ang);
+                    }
+                }
+
+                if let Some(dpi) = read_active_pointer_dpi_official(&device) {
+                    config.device.pointer_dpi = dpi;
+                }
+
+                break; // Connect to the first active Nape Pro
             }
         }
     }
