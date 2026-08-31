@@ -6,78 +6,127 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager, State, WindowEvent};
 
-pub struct TrayMenuState {
-    pub layer_items: Mutex<Vec<MenuItem<tauri::Wry>>>,
-    pub scroll_item: Mutex<MenuItem<tauri::Wry>>,
-    pub gesture_item: Mutex<MenuItem<tauri::Wry>>,
-    pub auto_switch_item: Mutex<MenuItem<tauri::Wry>>,
-    pub dpi_items: Mutex<Vec<(u16, MenuItem<tauri::Wry>)>>,
-    pub dpi_submenu: Mutex<Option<Submenu<tauri::Wry>>>,
+pub fn build_tray_menu(app: &tauri::AppHandle, cfg: &AppConfig) -> Result<Menu<tauri::Wry>, tauri::Error> {
+    let dev = &cfg.device;
+    let quit_i = MenuItem::with_id(app, "quit", "終了 (Quit)", true, None::<&str>)?;
+    let show_i = MenuItem::with_id(app, "toggle_window", "ウィンドウの表示 / 非表示", true, None::<&str>)?;
+    let launcher_i = MenuItem::with_id(app, "open_launcher", "🌐 Keychron Launcher (公式Web設定) を開く", true, None::<&str>)?;
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let sep3 = PredefinedMenuItem::separator(app)?;
+
+    // 8 Layer Items (Layer 0 to 7)
+    let mut layer_items = Vec::new();
+    for i in 0..8u8 {
+        let layer_id = i;
+        let is_active = layer_id == dev.active_layer;
+        let angle = dev.layer_octashift_angles.get(&layer_id).cloned().unwrap_or((layer_id as u16) * 45);
+        let mark = if is_active { "✓ " } else { "   " };
+
+        let custom_name = dev.layer_names.get(&layer_id).cloned();
+        let text = match custom_name {
+            Some(ref n) if !n.is_empty() && n != &format!("Layer {}", layer_id) && n != &format!("L{}", layer_id) => {
+                format!("{}Layer {} ({}°): {}", mark, layer_id, angle, n)
+            }
+            _ => {
+                format!("{}Layer {} ({}°)", mark, layer_id, angle)
+            }
+        };
+
+        let item = MenuItem::with_id(app, &format!("layer_{}", i), &text, true, None::<&str>)?;
+        layer_items.push(item);
+    }
+
+    // Auto Switch Mode Item
+    let auto_mark = if cfg.auto_switch_enabled { "✓ " } else { "   " };
+    let auto_status = if cfg.auto_switch_enabled { "ON" } else { "OFF" };
+    let auto_switch_item = MenuItem::with_id(
+        app,
+        "toggle_auto_switch",
+        &format!("{}🔄 自動切り替え ({})", auto_mark, auto_status),
+        true,
+        None::<&str>,
+    )?;
+
+    let mut item_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = Vec::new();
+    item_refs.push(&show_i);
+    item_refs.push(&launcher_i);
+    item_refs.push(&sep1);
+
+    for item in &layer_items {
+        item_refs.push(item as &dyn tauri::menu::IsMenuItem<tauri::Wry>);
+    }
+
+    item_refs.push(&sep2);
+    item_refs.push(&auto_switch_item);
+
+    // Optional Hardware Controls (only shown when show_advanced_hardware_controls is enabled)
+    let mut scroll_item_opt = None;
+    let mut gesture_item_opt = None;
+    let mut dpi_sub_opt = None;
+    let mut dpi_items = Vec::new();
+
+    if cfg.show_advanced_hardware_controls {
+        let scroll_mark = if dev.trackball_scroll_mode { "✓ " } else { "   " };
+        let scroll_status = if dev.trackball_scroll_mode { "ON" } else { "OFF" };
+        let s_item = MenuItem::with_id(
+            app,
+            "toggle_scroll",
+            &format!("{}📜 ボールスクロール ({})", scroll_mark, scroll_status),
+            true,
+            None::<&str>,
+        )?;
+
+        let gesture_mark = if dev.trackball_gesture_mode { "✓ " } else { "   " };
+        let gesture_status = if dev.trackball_gesture_mode { "ON" } else { "OFF" };
+        let g_item = MenuItem::with_id(
+            app,
+            "toggle_gesture",
+            &format!("{}🖐️ ジェスチャー機能 ({})", gesture_mark, gesture_status),
+            true,
+            None::<&str>,
+        )?;
+
+        let dpi_preset_values: Vec<u16> = vec![400, 800, 1800, 3200, 4000];
+        for dpi in &dpi_preset_values {
+            let mark = if dev.pointer_dpi == *dpi { "✓ " } else { "   " };
+            let item = MenuItem::with_id(app, &format!("dpi_{}", dpi), &format!("{}{} DPI", mark, dpi), true, None::<&str>)?;
+            dpi_items.push(item);
+        }
+        let dpi_item_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+            dpi_items.iter().map(|item| item as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
+        let status_str = if dev.is_connected {
+            format!("🎯 DPI 設定 (現在 {} DPI)", dev.pointer_dpi)
+        } else {
+            "🎯 DPI 設定 (未接続)".to_string()
+        };
+        let dpi_sub = Submenu::with_items(app, &status_str, true, &dpi_item_refs)?;
+
+        scroll_item_opt = Some(s_item);
+        gesture_item_opt = Some(g_item);
+        dpi_sub_opt = Some(dpi_sub);
+    }
+
+    if let Some(ref s) = scroll_item_opt {
+        item_refs.push(s as &dyn tauri::menu::IsMenuItem<tauri::Wry>);
+    }
+    if let Some(ref g) = gesture_item_opt {
+        item_refs.push(g as &dyn tauri::menu::IsMenuItem<tauri::Wry>);
+    }
+    if let Some(ref d) = dpi_sub_opt {
+        item_refs.push(d as &dyn tauri::menu::IsMenuItem<tauri::Wry>);
+    }
+
+    item_refs.push(&sep3);
+    item_refs.push(&quit_i);
+
+    Menu::with_items(app, &item_refs)
 }
 
 pub fn sync_tray_menu(app: &tauri::AppHandle, cfg: &AppConfig) {
-    if let Some(tray_state) = app.try_state::<TrayMenuState>() {
-        let dev = &cfg.device;
-
-        // 1. Sync Layer Items
-        if let Ok(items) = tray_state.layer_items.lock() {
-            for (i, item) in items.iter().enumerate() {
-                let layer_id = i as u8;
-                let is_active = layer_id == dev.active_layer;
-                let angle = dev.layer_octashift_angles.get(&layer_id).cloned().unwrap_or((layer_id as u16) * 45);
-                let mark = if is_active { "✓ " } else { "   " };
-
-                let custom_name = dev.layer_names.get(&layer_id).cloned();
-                let text = match custom_name {
-                    Some(ref n) if !n.is_empty() && n != &format!("Layer {}", layer_id) && n != &format!("L{}", layer_id) => {
-                        format!("{}Layer {} ({}°): {}", mark, layer_id, angle, n)
-                    }
-                    _ => {
-                        format!("{}Layer {} ({}°)", mark, layer_id, angle)
-                    }
-                };
-
-                let _ = item.set_text(text);
-            }
-        }
-
-        // 2. Sync Trackball Scroll Mode Item
-        if let Ok(item) = tray_state.scroll_item.lock() {
-            let mark = if dev.trackball_scroll_mode { "✓ " } else { "   " };
-            let status = if dev.trackball_scroll_mode { "ON" } else { "OFF" };
-            let _ = item.set_text(format!("{}📜 ボールスクロール ({})", mark, status));
-        }
-
-        // 3. Sync Trackball Gesture Mode Item
-        if let Ok(item) = tray_state.gesture_item.lock() {
-            let mark = if dev.trackball_gesture_mode { "✓ " } else { "   " };
-            let status = if dev.trackball_gesture_mode { "ON" } else { "OFF" };
-            let _ = item.set_text(format!("{}🖐️ ジェスチャー機能 ({})", mark, status));
-        }
-
-        // 4. Sync Auto Switch Mode Item
-        if let Ok(item) = tray_state.auto_switch_item.lock() {
-            let mark = if cfg.auto_switch_enabled { "✓ " } else { "   " };
-            let status = if cfg.auto_switch_enabled { "ON" } else { "OFF" };
-            let _ = item.set_text(format!("{}🔄 自動切り替え ({})", mark, status));
-        }
-
-        // 5. Sync DPI Items & Submenu Title
-        if let Ok(dpi_list) = tray_state.dpi_items.lock() {
-            for (dpi_val, item) in dpi_list.iter() {
-                let mark = if dev.pointer_dpi == *dpi_val { "✓ " } else { "   " };
-                let _ = item.set_text(format!("{}{} DPI", mark, dpi_val));
-            }
-        }
-        if let Ok(sub_guard) = tray_state.dpi_submenu.lock() {
-            if let Some(ref sub) = *sub_guard {
-                let status_str = if dev.is_connected {
-                    format!("🎯 DPI 設定 (現在 {} DPI)", dev.pointer_dpi)
-                } else {
-                    "🎯 DPI 設定 (未接続)".to_string()
-                };
-                let _ = sub.set_text(status_str);
-            }
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        if let Ok(menu) = build_tray_menu(app, cfg) {
+            let _ = tray.set_menu(Some(menu));
         }
     }
 }
@@ -492,6 +541,33 @@ async fn get_active_app_info_delayed(delay_seconds: u64) -> Result<ActiveAppInfo
 }
 
 #[tauri::command]
+async fn update_general_config(
+    app: tauri::AppHandle,
+    show_notifications: Option<bool>,
+    show_advanced_hardware_controls: Option<bool>,
+    state: State<'_, ConfigState>,
+) -> Result<AppConfig, String> {
+    let state_arc = state.0.clone();
+    let cfg = tauri::async_runtime::spawn_blocking(move || {
+        let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(v) = show_notifications {
+            cfg.show_notifications = v;
+        }
+        if let Some(v) = show_advanced_hardware_controls {
+            cfg.show_advanced_hardware_controls = v;
+        }
+        config::save_config_to_file(&cfg);
+        cfg.clone()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    sync_tray_menu(&app, &cfg);
+    let _ = app.emit("config-updated", &cfg);
+    Ok(cfg)
+}
+
+#[tauri::command]
 async fn update_auto_switch_config(
     app: tauri::AppHandle,
     enabled: bool,
@@ -692,82 +768,9 @@ pub fn run() {
         ))
         .manage(config_state)
         .setup(move |app| {
-            let quit_i = MenuItem::with_id(app, "quit", "終了 (Quit)", true, None::<&str>)?;
-            let show_i = MenuItem::with_id(app, "toggle_window", "ウィンドウの表示 / 非表示", true, None::<&str>)?;
-            let launcher_i = MenuItem::with_id(app, "open_launcher", "🌐 Keychron Launcher (公式Web設定) を開く", true, None::<&str>)?;
-            let sep1 = PredefinedMenuItem::separator(app)?;
-            let sep2 = PredefinedMenuItem::separator(app)?;
-            let sep3 = PredefinedMenuItem::separator(app)?;
+            let menu = build_tray_menu(app.handle(), &initial_config)?;
 
-            // 8 Layer Items (Layer 0 to 7) directly in main menu
-            let mut layer_items = Vec::new();
-            for i in 0..8u8 {
-                let item = MenuItem::with_id(app, &format!("layer_{}", i), &format!("Layer {}", i), true, None::<&str>)?;
-                layer_items.push(item);
-            }
-
-            // Trackball Controls (Scroll Toggle, Gesture Toggle, Auto Switch Toggle)
-            let scroll_item = MenuItem::with_id(app, "toggle_scroll", "📜 ボールスクロール", true, None::<&str>)?;
-            let gesture_item = MenuItem::with_id(app, "toggle_gesture", "🖐️ ジェスチャー機能", true, None::<&str>)?;
-            let auto_switch_item = MenuItem::with_id(app, "toggle_auto_switch", "🔄 自動切り替え", true, None::<&str>)?;
-
-            // DPI Submenu Items (Official Keychron Presets: 400 / 800 / 1800 / 3200 / 4000)
-            let dpi_preset_values: Vec<u16> = vec![400, 800, 1800, 3200, 4000];
-            let mut dpi_items = Vec::new();
-            for dpi in &dpi_preset_values {
-                let item = MenuItem::with_id(app, &format!("dpi_{}", dpi), &format!("{} DPI", dpi), true, None::<&str>)?;
-                dpi_items.push((*dpi, item));
-            }
-
-            let dpi_item_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
-                dpi_items.iter().map(|(_, item)| item as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
-            let dpi_sub = Submenu::with_items(app, "🎯 DPI 設定", true, &dpi_item_refs)?;
-
-            let mut menu_items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = Vec::new();
-            menu_items.push(&show_i);
-            menu_items.push(&launcher_i);
-            menu_items.push(&sep1);
-
-            for item in &layer_items {
-                menu_items.push(item as &dyn tauri::menu::IsMenuItem<tauri::Wry>);
-            }
-
-            menu_items.push(&sep2);
-            menu_items.push(&scroll_item);
-            menu_items.push(&gesture_item);
-            menu_items.push(&auto_switch_item);
-            menu_items.push(&dpi_sub);
-            menu_items.push(&sep3);
-            menu_items.push(&quit_i);
-
-            let menu = Menu::with_items(app, &menu_items)?;
-
-            let tray_state = TrayMenuState {
-                layer_items: Mutex::new(layer_items),
-                scroll_item: Mutex::new(scroll_item),
-                gesture_item: Mutex::new(gesture_item),
-                auto_switch_item: Mutex::new(auto_switch_item),
-                dpi_items: Mutex::new(dpi_items),
-                dpi_submenu: Mutex::new(Some(dpi_sub)),
-            };
-
-            sync_tray_menu(app.handle(), &initial_config);
-            app.manage(tray_state);
-
-            // Start background monitors (Auto App Switcher & HID Connection Monitor)
-            start_auto_switch_monitor(app.handle().clone());
-            start_hid_connection_monitor(app.handle().clone());
-
-            let is_autostart = std::env::args().any(|arg| arg == "--autostart");
-            if is_autostart {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
-                    #[cfg(target_os = "macos")]
-                    let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                }
-            }
-
-            let mut tray_builder = TrayIconBuilder::new().menu(&menu);
+            let mut tray_builder = TrayIconBuilder::with_id("main-tray").menu(&menu);
             if let Some(icon) = app.default_window_icon() {
                 tray_builder = tray_builder.icon(icon.clone());
             }
@@ -961,6 +964,19 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Start background monitors (Auto App Switcher & HID Connection Monitor)
+            start_auto_switch_monitor(app.handle().clone());
+            start_hid_connection_monitor(app.handle().clone());
+
+            let is_autostart = std::env::args().any(|arg| arg == "--autostart");
+            if is_autostart {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                    #[cfg(target_os = "macos")]
+                    let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                }
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -987,6 +1003,7 @@ pub fn run() {
             open_url,
             get_active_app_info,
             get_active_app_info_delayed,
+            update_general_config,
             update_auto_switch_config,
         ])
         .run(tauri::generate_context!())

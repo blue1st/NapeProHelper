@@ -1,6 +1,7 @@
 import React from 'react';
 import { AppConfig } from '../types';
 import { isEnabled, enable, disable } from '@tauri-apps/plugin-autostart';
+import { invoke } from '@tauri-apps/api/core';
 import { AutoSwitchSettings } from './AutoSwitchSettings';
 
 interface AppSettingsProps {
@@ -77,7 +78,18 @@ export const AppSettings: React.FC<AppSettingsProps> = ({ config, onUpdateConfig
             <p className="text-xs text-slate-400 mt-0.5">レイヤーが切り替わった際にOS通知を表示します</p>
           </div>
           <button
-            onClick={() => onUpdateConfig({ show_notifications: !config.show_notifications })}
+            onClick={async () => {
+              const nextVal = !config.show_notifications;
+              try {
+                const res = await invoke<AppConfig>('update_general_config', {
+                  showNotifications: nextVal,
+                  showAdvancedHardwareControls: null,
+                });
+                if (res) onUpdateConfig(res);
+              } catch {
+                onUpdateConfig({ show_notifications: nextVal });
+              }
+            }}
             className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out ${
               config.show_notifications ? 'bg-indigo-600' : 'bg-slate-700'
             }`}
@@ -85,6 +97,39 @@ export const AppSettings: React.FC<AppSettingsProps> = ({ config, onUpdateConfig
             <div
               className={`w-4 h-4 rounded-full bg-white transition-transform duration-200 ease-in-out ${
                 config.show_notifications ? 'translate-x-6' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* Advanced Hardware Controls toggle */}
+        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+          <div className="max-w-[80%]">
+            <h4 className="text-sm font-semibold text-white">高度なハードウェア設定を表示</h4>
+            <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+              トラックボールタブ、OctaShift認識角度の手動変更セレクタ、トレイメニューのDPI・モード切替を表示します（通常は公式Keychron Launcherでの設定を推奨）。
+            </p>
+          </div>
+          <button
+            onClick={async () => {
+              const nextVal = !config.show_advanced_hardware_controls;
+              try {
+                const res = await invoke<AppConfig>('update_general_config', {
+                  showNotifications: null,
+                  showAdvancedHardwareControls: nextVal,
+                });
+                if (res) onUpdateConfig(res);
+              } catch {
+                onUpdateConfig({ show_advanced_hardware_controls: nextVal });
+              }
+            }}
+            className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out shrink-0 ${
+              config.show_advanced_hardware_controls ? 'bg-indigo-600' : 'bg-slate-700'
+            }`}
+          >
+            <div
+              className={`w-4 h-4 rounded-full bg-white transition-transform duration-200 ease-in-out ${
+                config.show_advanced_hardware_controls ? 'translate-x-6' : 'translate-x-0'
               }`}
             />
           </button>

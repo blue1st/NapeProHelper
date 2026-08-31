@@ -49,6 +49,8 @@ pub struct AppConfig {
     pub minimize_to_tray: bool,
     pub show_notifications: bool,
     #[serde(default)]
+    pub show_advanced_hardware_controls: bool,
+    #[serde(default)]
     pub auto_switch_enabled: bool,
     #[serde(default)]
     pub auto_switch_default_layer: Option<u8>,
@@ -63,6 +65,7 @@ impl Default for AppConfig {
             autostart: true,
             minimize_to_tray: true,
             show_notifications: true,
+            show_advanced_hardware_controls: false,
             auto_switch_enabled: false,
             auto_switch_default_layer: Some(0),
             auto_switch_rules: Vec::new(),

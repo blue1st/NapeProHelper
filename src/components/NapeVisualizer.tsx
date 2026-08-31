@@ -8,6 +8,7 @@ interface NapeVisualizerProps {
   onSelectLayer: (layerId: number) => void;
   onRefreshFromHardware?: () => void;
   onUpdateAngle: (layerId: number, angle: number) => void;
+  showAdvancedControls?: boolean;
 }
 
 export const NapeVisualizer: React.FC<NapeVisualizerProps> = ({
@@ -15,6 +16,7 @@ export const NapeVisualizer: React.FC<NapeVisualizerProps> = ({
   activeLayer,
   onSelectLayer,
   onUpdateAngle,
+  showAdvancedControls = false,
 }) => {
   const [selectedButtonId, setSelectedButtonId] = useState<number>(1);
   const [isSimulatingClick, setIsSimulatingClick] = useState<number | null>(null);
@@ -152,31 +154,40 @@ export const NapeVisualizer: React.FC<NapeVisualizerProps> = ({
 
       {/* 2. OFFICIAL KEYCHRON LAUNCHER STYLE HARDWARE VISUALIZER */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 relative overflow-hidden flex flex-col items-center shadow-xl">
-        {/* HEADER WITHIN PREVIEW BOX: OCTASHIFT ANGLE SELECTOR */}
+        {/* HEADER WITHIN PREVIEW BOX: OCTASHIFT ANGLE SELECTOR / BADGE */}
         <div className="w-full flex flex-wrap items-center justify-between gap-3 pb-3 mb-2 border-b border-slate-800/80 px-2 z-20">
           <div className="flex items-center gap-2">
             <RotateCw className="w-4 h-4 text-cyan-400" />
             <span className="text-xs font-semibold text-slate-200">
-              レイヤー L{currentPreviewLayer} の認識角度 (OctaShift)
+              認識角度 (OctaShift): <span className="font-mono text-cyan-400 font-bold ml-1">{currentAngle}°</span>
             </span>
           </div>
 
-          {/* OctaShift Angle Quick Selector for Current Layer */}
-          <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800/90 shadow-inner">
-            {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
-              <button
-                key={deg}
-                onClick={() => onUpdateAngle(currentPreviewLayer, deg)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
-                  currentAngle === deg
-                    ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-md shadow-indigo-500/25 ring-1 ring-cyan-400/50'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-                }`}
-              >
-                {deg}°
-              </button>
-            ))}
-          </div>
+          {showAdvancedControls ? (
+            /* OctaShift Angle Quick Selector for Current Layer */
+            <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800/90 shadow-inner">
+              {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+                <button
+                  key={deg}
+                  onClick={() => onUpdateAngle(currentPreviewLayer, deg)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
+                    currentAngle === deg
+                      ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-md shadow-indigo-500/25 ring-1 ring-cyan-400/50'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                >
+                  {deg}°
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <span>L{currentPreviewLayer} 設定角度</span>
+              <span className="px-2 py-0.5 rounded-lg bg-slate-950/80 text-cyan-300 font-mono font-bold border border-cyan-500/30">
+                {currentAngle}°
+              </span>
+            </div>
+          )}
         </div>
 
         {/* DYNAMIC SCREEN-SPACE DIAGRAM VISUALIZER */}

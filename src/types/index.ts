@@ -40,6 +40,7 @@ export interface AppConfig {
   autostart: boolean;
   minimize_to_tray: boolean;
   show_notifications: boolean;
+  show_advanced_hardware_controls?: boolean;
   auto_switch_enabled?: boolean;
   auto_switch_default_layer?: number | null;
   auto_switch_rules?: AutoSwitchRule[];

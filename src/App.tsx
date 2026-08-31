@@ -180,6 +180,21 @@ export function App() {
     }
   };
 
+  const showAdvancedControls = config.show_advanced_hardware_controls ?? false;
+
+  useEffect(() => {
+    if (activeTab === 'hardware' && !showAdvancedControls) {
+      setActiveTab('visualizer');
+    }
+  }, [showAdvancedControls, activeTab]);
+
+  const tabs = [
+    { id: 'visualizer', label: 'プレビュー' },
+    ...(showAdvancedControls ? [{ id: 'hardware', label: 'トラックボール' }] : []),
+    { id: 'settings', label: '設定' },
+    { id: 'about', label: 'アプリ情報', hasBadge: hasUpdate },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
       {/* Top Navigation & Header */}
@@ -193,12 +208,7 @@ export function App() {
       {/* Primary Tab Navigation & Keychron Launcher Link */}
       <div className="border-b border-slate-800 px-4 flex items-center justify-between">
         <div className="flex items-center gap-6">
-          {[
-            { id: 'visualizer', label: 'プレビュー' },
-            { id: 'hardware', label: 'トラックボール' },
-            { id: 'settings', label: '設定' },
-            { id: 'about', label: 'アプリ情報', hasBadge: hasUpdate },
-          ].map((tab) => {
+          {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button
@@ -307,6 +317,7 @@ export function App() {
                 onSelectLayer={handleSelectLayer}
                 onUpdateAngle={handleUpdateAngle}
                 onRefreshFromHardware={handleReloadDeviceConfig}
+                showAdvancedControls={showAdvancedControls}
               />
             )}
 
