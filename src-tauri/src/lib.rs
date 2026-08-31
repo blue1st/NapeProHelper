@@ -123,10 +123,59 @@ pub fn build_tray_menu(app: &tauri::AppHandle, cfg: &AppConfig) -> Result<Menu<t
     Menu::with_items(app, &item_refs)
 }
 
+pub fn get_layer_tray_icon(layer: u8) -> Option<tauri::image::Image<'static>> {
+    let bytes: &'static [u8] = match layer {
+        0 => include_bytes!("../icons/tray/layer_0.rgba"),
+        1 => include_bytes!("../icons/tray/layer_1.rgba"),
+        2 => include_bytes!("../icons/tray/layer_2.rgba"),
+        3 => include_bytes!("../icons/tray/layer_3.rgba"),
+        4 => include_bytes!("../icons/tray/layer_4.rgba"),
+        5 => include_bytes!("../icons/tray/layer_5.rgba"),
+        6 => include_bytes!("../icons/tray/layer_6.rgba"),
+        7 => include_bytes!("../icons/tray/layer_7.rgba"),
+        _ => include_bytes!("../icons/tray/layer_0.rgba"),
+    };
+    Some(tauri::image::Image::new(bytes, 32, 32))
+}
+
 pub fn sync_tray_menu(app: &tauri::AppHandle, cfg: &AppConfig) {
     if let Some(tray) = app.tray_by_id("main-tray") {
         if let Ok(menu) = build_tray_menu(app, cfg) {
             let _ = tray.set_menu(Some(menu));
+        }
+
+        // Update tooltip
+        let custom_name = cfg.device.layer_names.get(&cfg.device.active_layer);
+        let tooltip = match custom_name {
+            Some(name) if !name.is_empty() && name != &format!("Layer {}", cfg.device.active_layer) && name != &format!("L{}", cfg.device.active_layer) => {
+                format!("Keychron Nape Pro - Layer {} ({})", cfg.device.active_layer, name)
+            }
+            _ => format!("Keychron Nape Pro - Layer {}", cfg.device.active_layer),
+        };
+        let _ = tray.set_tooltip(Some(tooltip));
+
+        // macOS: Update status bar item title (L0..L7)
+        #[cfg(target_os = "macos")]
+        {
+            if cfg.show_tray_layer_number {
+                let _ = tray.set_title(Some(format!("L{}", cfg.device.active_layer)));
+            } else {
+                let _ = tray.set_title(None::<String>);
+            }
+        }
+
+        // Windows & other OS: Switch icon to layer indicator icon
+        #[cfg(not(target_os = "macos"))]
+        {
+            if cfg.show_tray_layer_number {
+                if let Some(icon) = get_layer_tray_icon(cfg.device.active_layer) {
+                    let _ = tray.set_icon(Some(icon));
+                } else if let Some(icon) = app.default_window_icon() {
+                    let _ = tray.set_icon(Some(icon.clone()));
+                }
+            } else if let Some(icon) = app.default_window_icon() {
+                let _ = tray.set_icon(Some(icon.clone()));
+            }
         }
     }
 }
@@ -544,6 +593,7 @@ async fn get_active_app_info_delayed(delay_seconds: u64) -> Result<ActiveAppInfo
 async fn update_general_config(
     app: tauri::AppHandle,
     show_notifications: Option<bool>,
+    show_tray_layer_number: Option<bool>,
     show_advanced_hardware_controls: Option<bool>,
     state: State<'_, ConfigState>,
 ) -> Result<AppConfig, String> {
@@ -552,6 +602,9 @@ async fn update_general_config(
         let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(v) = show_notifications {
             cfg.show_notifications = v;
+        }
+        if let Some(v) = show_tray_layer_number {
+            cfg.show_tray_layer_number = v;
         }
         if let Some(v) = show_advanced_hardware_controls {
             cfg.show_advanced_hardware_controls = v;
@@ -771,8 +824,38 @@ pub fn run() {
             let menu = build_tray_menu(app.handle(), &initial_config)?;
 
             let mut tray_builder = TrayIconBuilder::with_id("main-tray").menu(&menu);
-            if let Some(icon) = app.default_window_icon() {
-                tray_builder = tray_builder.icon(icon.clone());
+
+            // Initial tooltip
+            let init_custom_name = initial_config.device.layer_names.get(&initial_config.device.active_layer);
+            let init_tooltip = match init_custom_name {
+                Some(name) if !name.is_empty() && name != &format!("Layer {}", initial_config.device.active_layer) && name != &format!("L{}", initial_config.device.active_layer) => {
+                    format!("Keychron Nape Pro - Layer {} ({})", initial_config.device.active_layer, name)
+                }
+                _ => format!("Keychron Nape Pro - Layer {}", initial_config.device.active_layer),
+            };
+            tray_builder = tray_builder.tooltip(init_tooltip);
+
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(icon) = app.default_window_icon() {
+                    tray_builder = tray_builder.icon(icon.clone());
+                }
+                if initial_config.show_tray_layer_number {
+                    tray_builder = tray_builder.title(format!("L{}", initial_config.device.active_layer));
+                }
+            }
+
+            #[cfg(not(target_os = "macos"))]
+            {
+                if initial_config.show_tray_layer_number {
+                    if let Some(icon) = get_layer_tray_icon(initial_config.device.active_layer) {
+                        tray_builder = tray_builder.icon(icon);
+                    } else if let Some(icon) = app.default_window_icon() {
+                        tray_builder = tray_builder.icon(icon.clone());
+                    }
+                } else if let Some(icon) = app.default_window_icon() {
+                    tray_builder = tray_builder.icon(icon.clone());
+                }
             }
 
             let _tray = tray_builder

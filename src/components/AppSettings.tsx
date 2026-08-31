@@ -83,6 +83,7 @@ export const AppSettings: React.FC<AppSettingsProps> = ({ config, onUpdateConfig
               try {
                 const res = await invoke<AppConfig>('update_general_config', {
                   showNotifications: nextVal,
+                  showTrayLayerNumber: null,
                   showAdvancedHardwareControls: null,
                 });
                 if (res) onUpdateConfig(res);
@@ -102,6 +103,41 @@ export const AppSettings: React.FC<AppSettingsProps> = ({ config, onUpdateConfig
           </button>
         </div>
 
+        {/* Tray Layer Number Display toggle */}
+        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+          <div className="max-w-[80%]">
+            <h4 className="text-sm font-semibold text-white">トレイにレイヤー番号を表示</h4>
+            <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+              システムトレイで現在のレイヤーNoを一目で確認できます（macOSではメニューバーに「L0〜L7」を表示し、Windowsではレイヤー番号付きアイコンに切り替わります）。
+            </p>
+          </div>
+          <button
+            onClick={async () => {
+              const currentVal = config.show_tray_layer_number ?? true;
+              const nextVal = !currentVal;
+              try {
+                const res = await invoke<AppConfig>('update_general_config', {
+                  showNotifications: null,
+                  showTrayLayerNumber: nextVal,
+                  showAdvancedHardwareControls: null,
+                });
+                if (res) onUpdateConfig(res);
+              } catch {
+                onUpdateConfig({ show_tray_layer_number: nextVal });
+              }
+            }}
+            className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out shrink-0 ${
+              (config.show_tray_layer_number ?? true) ? 'bg-indigo-600' : 'bg-slate-700'
+            }`}
+          >
+            <div
+              className={`w-4 h-4 rounded-full bg-white transition-transform duration-200 ease-in-out ${
+                (config.show_tray_layer_number ?? true) ? 'translate-x-6' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+
         {/* Advanced Hardware Controls toggle */}
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
           <div className="max-w-[80%]">
@@ -116,6 +152,7 @@ export const AppSettings: React.FC<AppSettingsProps> = ({ config, onUpdateConfig
               try {
                 const res = await invoke<AppConfig>('update_general_config', {
                   showNotifications: null,
+                  showTrayLayerNumber: null,
                   showAdvancedHardwareControls: nextVal,
                 });
                 if (res) onUpdateConfig(res);

@@ -43,11 +43,17 @@ pub struct AutoSwitchRule {
     pub enabled: bool,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub autostart: bool,
     pub minimize_to_tray: bool,
     pub show_notifications: bool,
+    #[serde(default = "default_true")]
+    pub show_tray_layer_number: bool,
     #[serde(default)]
     pub show_advanced_hardware_controls: bool,
     #[serde(default)]
@@ -65,6 +71,7 @@ impl Default for AppConfig {
             autostart: true,
             minimize_to_tray: true,
             show_notifications: true,
+            show_tray_layer_number: true,
             show_advanced_hardware_controls: false,
             auto_switch_enabled: false,
             auto_switch_default_layer: Some(0),
