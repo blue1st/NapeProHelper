@@ -238,5 +238,82 @@ def generate_layer_icons():
         save_raw_rgba(base_w, base_h, new_pixels, rgba_path)
         print(f'Generated: {png_path} & {rgba_path}')
 
+def generate_disconnected_icon():
+    base_w, base_h, base_pixels = parse_png_rgba('/Users/t-kawasaki/src/desktop-apps/napepro-helper/src-tauri/icons/32x32.png')
+    out_dir = '/Users/t-kawasaki/src/desktop-apps/napepro-helper/src-tauri/icons/tray'
+    os.makedirs(out_dir, exist_ok=True)
+
+    new_pixels = []
+    for y in range(base_h):
+        row = []
+        for x in range(base_w):
+            r, g, b, a = base_pixels[y][x]
+            if a > 0:
+                # Grayscale and slightly dimmed for disconnected/offline appearance
+                gray = int(0.299 * r + 0.587 * g + 0.114 * b)
+                dim_gray = int(gray * 0.7)
+                dim_a = int(a * 0.75)
+                row.append([dim_gray, dim_gray, dim_gray, dim_a])
+            else:
+                row.append([0, 0, 0, 0])
+        new_pixels.append(row)
+
+    # Badge dimensions & position (15x15 bottom-right at 16,16)
+    bx0, by0 = 16, 16
+    bw, bh = 15, 15
+
+    bg_r, bg_g, bg_b = 15, 23, 42        # Slate 900
+    border_r, border_g, border_b = 239, 68, 68 # Red 500
+    text_r, text_g, text_b = 255, 255, 255      # Pure White
+
+    for dy in range(bh):
+        for dx in range(bw):
+            px = bx0 + dx
+            py = by0 + dy
+            if px >= base_w or py >= base_h:
+                continue
+
+            is_border = (
+                dx == 0 or dx == bw - 1 or dy == 0 or dy == bh - 1 or
+                (dx == 1 and dy in (1, bh - 2)) or
+                (dx == bw - 2 and dy in (1, bh - 2))
+            )
+
+            if (dx == 0 and dy in (0, bh - 1)) or (dx == bw - 1 and dy in (0, bh - 1)):
+                continue
+            elif is_border:
+                new_pixels[py][px] = [border_r, border_g, border_b, 255]
+            else:
+                new_pixels[py][px] = [bg_r, bg_g, bg_b, 255]
+
+    # Crisp 7x7 'X' symbol
+    cross_7x7 = [
+        "1000001",
+        "0100010",
+        "0010100",
+        "0001000",
+        "0010100",
+        "0100010",
+        "1000001",
+    ]
+    fx0 = bx0 + (bw - 7) // 2
+    fy0 = by0 + (bh - 7) // 2
+
+    for f_y, line in enumerate(cross_7x7):
+        for f_x, ch in enumerate(line):
+            if ch == '1':
+                px = fx0 + f_x
+                py = fy0 + f_y
+                if 0 <= px < base_w and 0 <= py < base_h:
+                    new_pixels[py][px] = [text_r, text_g, text_b, 255]
+
+    png_path = os.path.join(out_dir, 'disconnected.png')
+    rgba_path = os.path.join(out_dir, 'disconnected.rgba')
+    save_png_rgba(base_w, base_h, new_pixels, png_path)
+    save_raw_rgba(base_w, base_h, new_pixels, rgba_path)
+    print(f'Generated: {png_path} & {rgba_path}')
+
 if __name__ == '__main__':
     generate_layer_icons()
+    generate_disconnected_icon()
+

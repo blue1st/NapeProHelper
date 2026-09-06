@@ -138,43 +138,74 @@ pub fn get_layer_tray_icon(layer: u8) -> Option<tauri::image::Image<'static>> {
     Some(tauri::image::Image::new(bytes, 32, 32))
 }
 
+pub fn get_disconnected_tray_icon() -> Option<tauri::image::Image<'static>> {
+    let bytes: &'static [u8] = include_bytes!("../icons/tray/disconnected.rgba");
+    Some(tauri::image::Image::new(bytes, 32, 32))
+}
+
 pub fn sync_tray_menu(app: &tauri::AppHandle, cfg: &AppConfig) {
     if let Some(tray) = app.tray_by_id("main-tray") {
         if let Ok(menu) = build_tray_menu(app, cfg) {
             let _ = tray.set_menu(Some(menu));
         }
 
-        // Update tooltip
-        let custom_name = cfg.device.layer_names.get(&cfg.device.active_layer);
-        let tooltip = match custom_name {
-            Some(name) if !name.is_empty() && name != &format!("Layer {}", cfg.device.active_layer) && name != &format!("L{}", cfg.device.active_layer) => {
-                format!("Keychron Nape Pro - Layer {} ({})", cfg.device.active_layer, name)
-            }
-            _ => format!("Keychron Nape Pro - Layer {}", cfg.device.active_layer),
-        };
-        let _ = tray.set_tooltip(Some(tooltip));
+        if !cfg.device.is_connected {
+            // Disconnected state
+            let _ = tray.set_tooltip(Some("Keychron Nape Pro - 未接続 (Disconnected)".to_string()));
 
-        // macOS: Update status bar item title (L0..L7)
-        #[cfg(target_os = "macos")]
-        {
-            if cfg.show_tray_layer_number {
-                let _ = tray.set_title(Some(format!("L{}", cfg.device.active_layer)));
-            } else {
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(icon) = get_disconnected_tray_icon() {
+                    let _ = tray.set_icon(Some(icon));
+                }
+                // Clear layer title when disconnected
                 let _ = tray.set_title(None::<String>);
             }
-        }
 
-        // Windows & other OS: Switch icon to layer indicator icon
-        #[cfg(not(target_os = "macos"))]
-        {
-            if cfg.show_tray_layer_number {
-                if let Some(icon) = get_layer_tray_icon(cfg.device.active_layer) {
+            #[cfg(not(target_os = "macos"))]
+            {
+                if let Some(icon) = get_disconnected_tray_icon() {
                     let _ = tray.set_icon(Some(icon));
                 } else if let Some(icon) = app.default_window_icon() {
                     let _ = tray.set_icon(Some(icon.clone()));
                 }
-            } else if let Some(icon) = app.default_window_icon() {
-                let _ = tray.set_icon(Some(icon.clone()));
+            }
+        } else {
+            // Connected state
+            let custom_name = cfg.device.layer_names.get(&cfg.device.active_layer);
+            let tooltip = match custom_name {
+                Some(name) if !name.is_empty() && name != &format!("Layer {}", cfg.device.active_layer) && name != &format!("L{}", cfg.device.active_layer) => {
+                    format!("Keychron Nape Pro - Layer {} ({})", cfg.device.active_layer, name)
+                }
+                _ => format!("Keychron Nape Pro - Layer {}", cfg.device.active_layer),
+            };
+            let _ = tray.set_tooltip(Some(tooltip));
+
+            // macOS: Update status bar item title (L0..L7) and restore default icon
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(icon) = app.default_window_icon() {
+                    let _ = tray.set_icon(Some(icon.clone()));
+                }
+                if cfg.show_tray_layer_number {
+                    let _ = tray.set_title(Some(format!("L{}", cfg.device.active_layer)));
+                } else {
+                    let _ = tray.set_title(None::<String>);
+                }
+            }
+
+            // Windows & other OS: Switch icon to layer indicator icon
+            #[cfg(not(target_os = "macos"))]
+            {
+                if cfg.show_tray_layer_number {
+                    if let Some(icon) = get_layer_tray_icon(cfg.device.active_layer) {
+                        let _ = tray.set_icon(Some(icon));
+                    } else if let Some(icon) = app.default_window_icon() {
+                        let _ = tray.set_icon(Some(icon.clone()));
+                    }
+                } else if let Some(icon) = app.default_window_icon() {
+                    let _ = tray.set_icon(Some(icon.clone()));
+                }
             }
         }
     }
@@ -825,36 +856,45 @@ pub fn run() {
 
             let mut tray_builder = TrayIconBuilder::with_id("main-tray").menu(&menu);
 
-            // Initial tooltip
-            let init_custom_name = initial_config.device.layer_names.get(&initial_config.device.active_layer);
-            let init_tooltip = match init_custom_name {
-                Some(name) if !name.is_empty() && name != &format!("Layer {}", initial_config.device.active_layer) && name != &format!("L{}", initial_config.device.active_layer) => {
-                    format!("Keychron Nape Pro - Layer {} ({})", initial_config.device.active_layer, name)
-                }
-                _ => format!("Keychron Nape Pro - Layer {}", initial_config.device.active_layer),
-            };
-            tray_builder = tray_builder.tooltip(init_tooltip);
-
-            #[cfg(target_os = "macos")]
-            {
-                if let Some(icon) = app.default_window_icon() {
+            if !initial_config.device.is_connected {
+                tray_builder = tray_builder.tooltip("Keychron Nape Pro - 未接続 (Disconnected)");
+                if let Some(icon) = get_disconnected_tray_icon() {
+                    tray_builder = tray_builder.icon(icon);
+                } else if let Some(icon) = app.default_window_icon() {
                     tray_builder = tray_builder.icon(icon.clone());
                 }
-                if initial_config.show_tray_layer_number {
-                    tray_builder = tray_builder.title(format!("L{}", initial_config.device.active_layer));
-                }
-            }
+            } else {
+                // Initial tooltip
+                let init_custom_name = initial_config.device.layer_names.get(&initial_config.device.active_layer);
+                let init_tooltip = match init_custom_name {
+                    Some(name) if !name.is_empty() && name != &format!("Layer {}", initial_config.device.active_layer) && name != &format!("L{}", initial_config.device.active_layer) => {
+                        format!("Keychron Nape Pro - Layer {} ({})", initial_config.device.active_layer, name)
+                    }
+                    _ => format!("Keychron Nape Pro - Layer {}", initial_config.device.active_layer),
+                };
+                tray_builder = tray_builder.tooltip(init_tooltip);
 
-            #[cfg(not(target_os = "macos"))]
-            {
-                if initial_config.show_tray_layer_number {
-                    if let Some(icon) = get_layer_tray_icon(initial_config.device.active_layer) {
-                        tray_builder = tray_builder.icon(icon);
+                #[cfg(target_os = "macos")]
+                {
+                    if let Some(icon) = app.default_window_icon() {
+                        tray_builder = tray_builder.icon(icon.clone());
+                    }
+                    if initial_config.show_tray_layer_number {
+                        tray_builder = tray_builder.title(format!("L{}", initial_config.device.active_layer));
+                    }
+                }
+
+                #[cfg(not(target_os = "macos"))]
+                {
+                    if initial_config.show_tray_layer_number {
+                        if let Some(icon) = get_layer_tray_icon(initial_config.device.active_layer) {
+                            tray_builder = tray_builder.icon(icon);
+                        } else if let Some(icon) = app.default_window_icon() {
+                            tray_builder = tray_builder.icon(icon.clone());
+                        }
                     } else if let Some(icon) = app.default_window_icon() {
                         tray_builder = tray_builder.icon(icon.clone());
                     }
-                } else if let Some(icon) = app.default_window_icon() {
-                    tray_builder = tray_builder.icon(icon.clone());
                 }
             }
 
@@ -1092,3 +1132,17 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tray_icons_exist_and_loadable() {
+        assert!(get_disconnected_tray_icon().is_some());
+        for layer in 0..8 {
+            assert!(get_layer_tray_icon(layer).is_some());
+        }
+    }
+}
+
