@@ -249,24 +249,7 @@ async fn set_active_layer(app: tauri::AppHandle, _device_id: Option<String>, lay
         let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
         cfg.device.active_layer = layer_id;
         if cfg.device.is_connected {
-            let mut written = false;
-            if let Ok(api) = hidapi::HidApi::new() {
-                for dev_info in api.device_list() {
-                    if config::is_target_nape_device(dev_info) {
-                        if let Ok(hid_dev) = dev_info.open_device(&api) {
-                            let mut req = [0u8; 33];
-                            req[0] = 0x00;
-                            req[1] = 0xA7; // KC_MISC_CMD_GROUP
-                            req[2] = 45;   // KC_USER_CMD_NAPE_SET_LAYER (45 / 0x2D)
-                            req[3] = layer_id + 1; // 1-based layer index (1..8)
-                            if hid_dev.write(&req).is_ok() {
-                                written = true;
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
+            let written = config::set_active_layer_official(layer_id);
             if !written {
                 cfg.device.is_connected = false;
             }
@@ -294,17 +277,9 @@ async fn set_octashift_angle(app: tauri::AppHandle, _device_id: Option<String>, 
         }
 
         if cfg.device.is_connected {
-            let mut written = false;
-            if let Ok(api) = hidapi::HidApi::new() {
-                for dev_info in api.device_list() {
-                    if config::is_target_nape_device(dev_info) {
-                        if let Ok(hid_dev) = dev_info.open_device(&api) {
-                            written = config::set_octashift_angle_official(&hid_dev, target_layer, angle);
-                            break;
-                        }
-                    }
-                }
-            }
+            let written = config::with_nape_device(|hid_dev| {
+                config::set_octashift_angle_official(hid_dev, target_layer, angle)
+            }).unwrap_or(false);
             if !written {
                 cfg.device.is_connected = false;
             }
@@ -328,17 +303,9 @@ async fn set_pointer_dpi(app: tauri::AppHandle, _device_id: Option<String>, dpi:
         cfg.device.pointer_dpi = dpi;
 
         if cfg.device.is_connected {
-            let mut written = false;
-            if let Ok(api) = hidapi::HidApi::new() {
-                for dev_info in api.device_list() {
-                    if config::is_target_nape_device(dev_info) {
-                        if let Ok(hid_dev) = dev_info.open_device(&api) {
-                            written = config::set_pointer_dpi_official(&hid_dev, dpi);
-                            break;
-                        }
-                    }
-                }
-            }
+            let written = config::with_nape_device(|hid_dev| {
+                config::set_pointer_dpi_official(hid_dev, dpi)
+            }).unwrap_or(false);
             if !written {
                 cfg.device.is_connected = false;
             }
@@ -362,17 +329,9 @@ async fn set_trackball_scroll_mode(app: tauri::AppHandle, _device_id: Option<Str
         cfg.device.trackball_scroll_mode = enabled;
 
         if cfg.device.is_connected {
-            let mut written = false;
-            if let Ok(api) = hidapi::HidApi::new() {
-                for dev_info in api.device_list() {
-                    if config::is_target_nape_device(dev_info) {
-                        if let Ok(hid_dev) = dev_info.open_device(&api) {
-                            written = config::set_trackball_force_gesture_scroll_official(&hid_dev, cfg.device.trackball_gesture_mode, cfg.device.trackball_scroll_mode);
-                            break;
-                        }
-                    }
-                }
-            }
+            let written = config::with_nape_device(|hid_dev| {
+                config::set_trackball_force_gesture_scroll_official(hid_dev, cfg.device.trackball_gesture_mode, cfg.device.trackball_scroll_mode)
+            }).unwrap_or(false);
             if !written {
                 cfg.device.is_connected = false;
             }
@@ -396,17 +355,9 @@ async fn set_trackball_gesture_mode(app: tauri::AppHandle, _device_id: Option<St
         cfg.device.trackball_gesture_mode = enabled;
 
         if cfg.device.is_connected {
-            let mut written = false;
-            if let Ok(api) = hidapi::HidApi::new() {
-                for dev_info in api.device_list() {
-                    if config::is_target_nape_device(dev_info) {
-                        if let Ok(hid_dev) = dev_info.open_device(&api) {
-                            written = config::set_trackball_force_gesture_scroll_official(&hid_dev, cfg.device.trackball_gesture_mode, cfg.device.trackball_scroll_mode);
-                            break;
-                        }
-                    }
-                }
-            }
+            let written = config::with_nape_device(|hid_dev| {
+                config::set_trackball_force_gesture_scroll_official(hid_dev, cfg.device.trackball_gesture_mode, cfg.device.trackball_scroll_mode)
+            }).unwrap_or(false);
             if !written {
                 cfg.device.is_connected = false;
             }
@@ -473,6 +424,7 @@ async fn refresh_from_hardware(app: tauri::AppHandle, _device_id: Option<String>
 #[tauri::command]
 async fn debug_dump_eeprom() -> Result<String, String> {
     let result = tauri::async_runtime::spawn_blocking(move || {
+        let _guard = config::HID_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let api = hidapi::HidApi::new().map_err(|e| e.to_string())?;
         let mut output = String::new();
 
@@ -800,24 +752,7 @@ fn start_auto_switch_monitor(app_handle: tauri::AppHandle) {
                                     let mut cfg = state.0.lock().unwrap_or_else(|e| e.into_inner());
                                     cfg.device.active_layer = target_layer;
                                     if cfg.device.is_connected {
-                                        let mut written = false;
-                                        if let Ok(api) = hidapi::HidApi::new() {
-                                            for dev_info in api.device_list() {
-                                                if config::is_target_nape_device(dev_info) {
-                                                    if let Ok(hid_dev) = dev_info.open_device(&api) {
-                                                        let mut req = [0u8; 33];
-                                                        req[0] = 0x00;
-                                                        req[1] = 0xA7;
-                                                        req[2] = 45;
-                                                        req[3] = target_layer + 1;
-                                                        if hid_dev.write(&req).is_ok() {
-                                                            written = true;
-                                                        }
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        let written = config::set_active_layer_official(target_layer);
                                         if !written {
                                             cfg.device.is_connected = false;
                                         }
@@ -839,6 +774,12 @@ fn start_auto_switch_monitor(app_handle: tauri::AppHandle) {
 }
 
 pub fn run() {
+    // Initialize hidapi on the Main Thread (Thread 0) before any background worker threads spawn.
+    // On macOS, hidapi binds IOHIDManager to CFRunLoopGetCurrent() on first init.
+    // Calling this on the main GUI thread binds it to CFRunLoopGetMain(), which runs continuously
+    // and prevents _CFAssertMismatchedTypeID / SIGILL when worker threads enumerate devices.
+    config::init_hidapi_main_thread();
+
     let config_state = ConfigState::new();
     let initial_config = {
         let guard = config_state.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -931,24 +872,7 @@ pub fn run() {
                                     let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
                                     cfg.device.active_layer = layer_idx;
                                     if cfg.device.is_connected {
-                                        let mut written = false;
-                                        if let Ok(api) = hidapi::HidApi::new() {
-                                            for dev_info in api.device_list() {
-                                                if config::is_target_nape_device(dev_info) {
-                                                    if let Ok(hid_dev) = dev_info.open_device(&api) {
-                                                        let mut req = [0u8; 33];
-                                                        req[0] = 0x00;
-                                                        req[1] = 0xA7;
-                                                        req[2] = 45;
-                                                        req[3] = layer_idx + 1;
-                                                        if hid_dev.write(&req).is_ok() {
-                                                            written = true;
-                                                        }
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        let written = config::set_active_layer_official(layer_idx);
                                         if !written {
                                             cfg.device.is_connected = false;
                                         }
@@ -973,17 +897,9 @@ pub fn run() {
                                 let next_mode = !cfg.device.trackball_scroll_mode;
                                 cfg.device.trackball_scroll_mode = next_mode;
                                 if cfg.device.is_connected {
-                                    let mut written = false;
-                                    if let Ok(api) = hidapi::HidApi::new() {
-                                        for dev_info in api.device_list() {
-                                            if config::is_target_nape_device(dev_info) {
-                                                if let Ok(hid_dev) = dev_info.open_device(&api) {
-                                                    written = config::set_trackball_force_gesture_scroll_official(&hid_dev, cfg.device.trackball_gesture_mode, next_mode);
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
+                                    let written = config::with_nape_device(|hid_dev| {
+                                        config::set_trackball_force_gesture_scroll_official(hid_dev, cfg.device.trackball_gesture_mode, next_mode)
+                                    }).unwrap_or(false);
                                     if !written {
                                         cfg.device.is_connected = false;
                                     }
@@ -1007,17 +923,9 @@ pub fn run() {
                                 let next_mode = !cfg.device.trackball_gesture_mode;
                                 cfg.device.trackball_gesture_mode = next_mode;
                                 if cfg.device.is_connected {
-                                    let mut written = false;
-                                    if let Ok(api) = hidapi::HidApi::new() {
-                                        for dev_info in api.device_list() {
-                                            if config::is_target_nape_device(dev_info) {
-                                                if let Ok(hid_dev) = dev_info.open_device(&api) {
-                                                    written = config::set_trackball_force_gesture_scroll_official(&hid_dev, next_mode, cfg.device.trackball_scroll_mode);
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
+                                    let written = config::with_nape_device(|hid_dev| {
+                                        config::set_trackball_force_gesture_scroll_official(hid_dev, next_mode, cfg.device.trackball_scroll_mode)
+                                    }).unwrap_or(false);
                                     if !written {
                                         cfg.device.is_connected = false;
                                     }
@@ -1058,17 +966,9 @@ pub fn run() {
                                     let mut cfg = state_arc.lock().unwrap_or_else(|e| e.into_inner());
                                     cfg.device.pointer_dpi = dpi_val;
                                     if cfg.device.is_connected {
-                                        let mut written = false;
-                                        if let Ok(api) = hidapi::HidApi::new() {
-                                            for dev_info in api.device_list() {
-                                                if config::is_target_nape_device(dev_info) {
-                                                    if let Ok(hid_dev) = dev_info.open_device(&api) {
-                                                        written = config::set_pointer_dpi_official(&hid_dev, dpi_val);
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        let written = config::with_nape_device(|hid_dev| {
+                                            config::set_pointer_dpi_official(hid_dev, dpi_val)
+                                        }).unwrap_or(false);
                                         if !written {
                                             cfg.device.is_connected = false;
                                         }

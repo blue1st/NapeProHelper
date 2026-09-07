@@ -876,7 +876,63 @@ pub fn is_device_present_passive(api: &hidapi::HidApi) -> bool {
     false
 }
 
+/// Global Mutex to synchronize all access to hidapi across all threads.
+/// On macOS, hidapi uses a single global IOHIDManager which is NOT thread-safe for
+/// concurrent enumerations or operations.
+pub static HID_MUTEX: Mutex<()> = Mutex::new(());
+
+/// Call this once on the Main Thread (Thread 0) during application startup.
+/// On macOS, this ensures hid_init() binds IOHIDManager to CFRunLoopGetMain(),
+/// preventing _CFAssertMismatchedTypeID / SIGILL when worker threads enumerate devices.
+pub fn init_hidapi_main_thread() {
+    let _guard = HID_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ = hidapi::HidApi::new();
+}
+
+/// Executes a closure with a valid HidApi instance under the protection of HID_MUTEX.
+pub fn with_hid_api<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&hidapi::HidApi) -> R,
+{
+    let _guard = HID_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let api = hidapi::HidApi::new().ok()?;
+    Some(f(&api))
+}
+
+/// Executes a closure with an opened target Keychron Nape Pro device under HID_MUTEX.
+pub fn with_nape_device<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&hidapi::HidDevice) -> R,
+{
+    let _guard = HID_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let api = hidapi::HidApi::new().ok()?;
+    for dev_info in api.device_list() {
+        if is_target_nape_device(dev_info) {
+            if let Ok(dev) = dev_info.open_device(&api) {
+                return Some(f(&dev));
+            }
+        }
+    }
+    None
+}
+
+/// Sends a 33-byte HID raw report to Keychron Nape Pro and returns whether it succeeded.
+pub fn send_nape_command(req: &[u8; 33]) -> bool {
+    with_nape_device(|dev| dev.write(req).is_ok()).unwrap_or(false)
+}
+
+/// Switches active layer on physical device (0-based layer index: 0..7).
+pub fn set_active_layer_official(layer_id: u8) -> bool {
+    let mut req = [0u8; 33];
+    req[0] = 0x00;
+    req[1] = 0xA7; // KC_MISC_CMD_GROUP
+    req[2] = 45;   // KC_USER_CMD_NAPE_SET_LAYER (45 / 0x2D)
+    req[3] = layer_id + 1; // 1-based layer index (1..8)
+    send_nape_command(&req)
+}
+
 pub fn scan_hid_devices(config: &mut AppConfig) -> bool {
+    let _guard = HID_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let api = match hidapi::HidApi::new() {
         Ok(a) => a,
         Err(_) => {
@@ -966,6 +1022,7 @@ pub fn scan_hid_devices(config: &mut AppConfig) -> bool {
 
 /// Force re-read all hardware settings (EEPROM keymaps, DPI, angle) from connected Nape Pro.
 pub fn refresh_device_from_hardware(config: &mut AppConfig, _device_id: Option<&str>) -> bool {
+    let _guard = HID_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let api = match hidapi::HidApi::new() {
         Ok(a) => a,
         Err(_) => return false,
