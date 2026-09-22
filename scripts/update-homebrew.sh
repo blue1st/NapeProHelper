@@ -50,10 +50,8 @@ cask "${CASK_NAME}" do
 
   app "Nape Pro Helper.app"
 
-  postflight do
-    system_command "xattr",
-                   args: ["-cr", "#{appdir}/Nape Pro Helper.app"],
-                   sudo: false
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-cr", "#{appdir}/Nape Pro Helper.app"]
   end
 
   zap trash: [
