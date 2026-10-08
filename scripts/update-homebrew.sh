@@ -50,9 +50,10 @@ cask "${CASK_NAME}" do
 
   app "Nape Pro Helper.app"
 
-  postflight_steps do
-    run "/usr/bin/xattr", args: ["-cr", "#{appdir}/Nape Pro Helper.app"]
-  end
+  caveats <<~EOS
+    Nape Pro Helper is not notarized. If macOS blocks it from running, execute:
+      xattr -cr "/Applications/Nape Pro Helper.app"
+  EOS
 
   zap trash: [
     "~/Library/Application Support/com.napepro.helper",
